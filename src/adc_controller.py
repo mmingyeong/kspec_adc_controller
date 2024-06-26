@@ -9,6 +9,7 @@ import os
 import time
 
 from nanotec_nanolib import Nanolib
+from nanolib_helper import NanolibHelper
 
 __all__ = ["adc_controller"]
 
@@ -46,9 +47,12 @@ class adc_controller:
         self.device_ids = scan_devices.getResult()
         if len(self.device_ids) < 2:
             raise Exception('Error: Not enough devices found')
-
+        
+        self.fhandles = []
         self.device_handle_1 = self.nanolib_accessor.addDevice(self.device_ids[0]).getResult()
         self.device_handle_2 = self.nanolib_accessor.addDevice(self.device_ids[1]).getResult()
+        self.handles.append(self.device_handle_1)
+        self.handles.append(self.device_handle_2)
 
     def connect(self):
         try:
@@ -89,6 +93,95 @@ class adc_controller:
         res["motor 1"] = bool(check1.getResult())
         res["motor 2"] = bool(check2.getResult())
         return res
+    
+    def test_PP(self):
+        # now ready to work with the controller, here are some examples on how to access the
+        # # object dictionary:
+        for device_handle in self.handles:
+            object_dictionary_access_examples(NanolibHelper, device_handle)
+            
+            ### example code to let the motor run in Profile Position mode
+            
+            # stop a possibly running NanoJ program
+            nanoj_control = NanolibHelper.write_number(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
+            
+            # choose Profile Position mode
+            mode_of_operation = NanolibHelper.write_number(device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
+            
+            # set the desired speed in rpm
+            target_velocity = NanolibHelper.write_number(device_handle, 100, Nanolib.OdIndex(0x6081, 0x00), 32)
+            
+            # set the desired target position
+            target_velocity = NanolibHelper.write_number(device_handle, 36000, Nanolib.OdIndex(0x607A, 0x00), 32)
+            
+            # switch the state machine to "operation enabled"
+            status_word = NanolibHelper.write_number(device_handle, 6, Nanolib.OdIndex(0x6040, 0x00), 16)
+            status_word = NanolibHelper.write_number(device_handle, 7, Nanolib.OdIndex(0x6040, 0x00), 16)
+            status_word = NanolibHelper.write_number(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
+            
+            # move the motor to the desired target psoition relatively
+            status_word = NanolibHelper.write_number(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
+            
+            while(True):
+                status_word = NanolibHelper.read_number(device_handle, Nanolib.OdIndex(0x6041, 0x00))
+                if ((status_word & 0x1400) == 0x1400):
+                    break
+                
+            status_word = NanolibHelper.write_number(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
+            
+            # set the new desired target position
+            target_velocity = NanolibHelper.write_number(device_handle, -36000, Nanolib.OdIndex(0x607A, 0x00), 32)
+            
+            # move the motor to the desired target psoition relatively
+            status_word = NanolibHelper.write_number(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
+            
+            while(True):
+                status_word = NanolibHelper.read_number(device_handle, Nanolib.OdIndex(0x6041, 0x00))
+                if ((status_word & 0x1400) == 0x1400):
+                    break
+            
+            # stop the motor
+            status_word = NanolibHelper.write_number(device_handle, 0x6, Nanolib.OdIndex(0x6040, 0x00), 16)
+
+    def test_PV(self):
+        # now ready to work with the controller, here are some examples on how to access the
+        # # object dictionary:
+        for device_handle in self.handles:
+            object_dictionary_access_examples(NanolibHelper, device_handle)
+            
+            ### example code to let the motor run in Profile Velocity mode
+            
+            # stop a possibly running NanoJ program
+            nanoj_control = NanolibHelper.write_number(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
+            
+            # choose Profile Velocity mode
+            mode_of_operation = NanolibHelper.write_number(device_handle, 3, Nanolib.OdIndex(0x6060, 0x00), 8)
+            
+            # set the desired speed in rpm
+            target_velocity = NanolibHelper.write_number(device_handle, 100, Nanolib.OdIndex(0x60FF, 0x00), 32)
+            
+            # switch the state machine to "operation enabled"
+            status_word = NanolibHelper.write_number(device_handle, 6, Nanolib.OdIndex(0x6040, 0x00), 16)
+            status_word = NanolibHelper.write_number(device_handle, 7, Nanolib.OdIndex(0x6040, 0x00), 16)
+            status_word = NanolibHelper.write_number(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
+            
+            # let the motor run for 3s
+            time.sleep(3)
+                
+            # stop the motor
+            status_word = NanolibHelper.write_number(device_handle, 0x6, Nanolib.OdIndex(0x6040, 0x00), 16)
+            
+            # set the desired speed in rpm, now counterclockwise
+            target_velocity = NanolibHelper.write_number(device_handle, -100, Nanolib.OdIndex(0x60FF, 0x00), 32)
+            
+            # start the motor    
+            status_word = NanolibHelper.write_number(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
+            
+            # let the motor run for 3s
+            time.sleep(3)
+            
+            # stop the motor
+            status_word = NanolibHelper.write_number(device_handle, 0x6, Nanolib.OdIndex(0x6040, 0x00), 16)
 
 
 # ============================================================ #
@@ -111,3 +204,22 @@ class ScanBusCallback(Nanolib.NlcScanBusCallback): # override super class
 callbackScanBus = ScanBusCallback() # Nanolib 2021
 
 # ============================================================ #
+
+
+def object_dictionary_access_examples(nanolib_helper, device_handle):
+    print('\nOD Example\n')
+
+    print('Motor Stop (0x6040-0)')
+    status_word = nanolib_helper.write_number(device_handle, -200, Nanolib.OdIndex(0x60FF, 0x00), 32)
+    
+    print("Reading subindex 0 of index 0x6040")
+    status_word = nanolib_helper.read_number(device_handle, Nanolib.OdIndex(0x60FF, 0x00))
+    print('Result: {}\n'.format(status_word))
+
+    print('\nRead Nanotec home page string')
+    home_page = nanolib_helper.read_string(device_handle, Nanolib.OdIndex(0x6505, 0x00))
+    print('The home page of Nanotec Electronic GmbH & Co. KG is: {}'.format(home_page))
+
+    print('\nRead device error stack')
+    error_stack = nanolib_helper.read_array(device_handle, Nanolib.OdIndex(0x1003, 0x00))
+    print('The error stack has {} elements\n'.format(error_stack[0]))
