@@ -7,22 +7,31 @@
 
 from adc_controller import adc_controller
 
-controller = adc_controller()
-
 class adc_actions:
     """adc flow chart"""
 
     def __init__(self):
+        self.controller = adc_controller()
         pass
 
-    def poweron():
-        controller.connect()
-        # Get Control
-        # Get Status
-        # data sheet가 어디있는지?
+    def poweron(self):
+        self.controller.find_devices()
+        self.controller.connect()
+
+    # adc_parking 타겟 관측 끝
+    def poweroff(self):
+        self.controller.disconnect()
+        self.controller.close()
+        
+    def connect(self):
+        self.controller.connect()
+
+    # adc_parking 타겟 관측 끝
+    def disconnect(self):
+        self.controller.disconnect()
 
     # adc_init
-    def homing_enable(method: int, SwitchSpeed:int, ZeroSpeed:int):
+    def homing(method: int, SwitchSpeed:int, ZeroSpeed:int, set=False):
         """Homing mode의 방법과 속도 값을 설정
         
         Homing? 모터 대기 상태
@@ -78,11 +87,3 @@ class adc_actions:
             timeout (int): waiting time
         """
         
-    # adc_parking 타겟 관측 끝
-    def poweroff(timeout: int):
-        """각 모드에서 모터 회전 종료 명령
-
-        Args:
-            timeout (int): waiting time
-        """
-        controller.disconnect()

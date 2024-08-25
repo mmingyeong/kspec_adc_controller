@@ -8562,3 +8562,65 @@ Exception: Error: connectDevice() - Invalid device handle
 2024-06-27 14:06:43,464 DEBUG: Checking connection state
 2024-06-27 14:06:43,465 INFO: Connection state: {'motor 1': False, 'motor 2': False}
 2024-06-27 14:06:45,311 DEBUG: close all
+2024-06-27 14:06:56,483 DEBUG: Initializing adc_controller
+2024-06-27 14:07:23,543 DEBUG: Connecting devices
+2024-06-27 14:07:23,894 DEBUG: Checking connection state
+2024-06-27 14:07:23,919 INFO: Connection state: {'motor 1': True, 'motor 2': True}
+2024-06-27 14:07:23,929 DEBUG: Testing Profile Velocity mode
+2024-06-27 14:07:23,930 DEBUG: OD Example
+2024-06-27 14:07:23,930 DEBUG: Motor Stop (0x6040-0)
+2024-06-27 14:07:23,951 DEBUG: Reading subindex 0 of index 0x6040
+2024-06-27 14:07:23,967 DEBUG: Result: <nanotec_nanolib.Nanolib.ResultInt; proxy of <Swig Object of type 'nlc::ResultInt *' at 0x0000018871E7AEA0> >
+2024-06-27 14:07:23,969 DEBUG: Read Nanotec home page string
+2024-06-27 14:07:23,983 DEBUG: The home page of Nanotec Electronic GmbH & Co. KG is: <nanotec_nanolib.Nanolib.ResultString; proxy of <Swig Object of type 'nlc::ResultString *' at 0x00000188723FE600> >
+2024-06-27 14:07:23,984 DEBUG: Read device error stack
+2024-06-27 14:07:23,999 DEBUG: The error stack has 0 elements
+2024-06-27 14:07:30,170 DEBUG: OD Example
+2024-06-27 14:07:30,171 DEBUG: Motor Stop (0x6040-0)
+2024-06-27 14:07:30,185 DEBUG: Reading subindex 0 of index 0x6040
+2024-06-27 14:07:30,202 DEBUG: Result: <nanotec_nanolib.Nanolib.ResultInt; proxy of <Swig Object of type 'nlc::ResultInt *' at 0x00000188723FE900> >
+2024-06-27 14:07:30,203 DEBUG: Read Nanotec home page string
+2024-06-27 14:07:30,217 DEBUG: The home page of Nanotec Electronic GmbH & Co. KG is: <nanotec_nanolib.Nanolib.ResultString; proxy of <Swig Object of type 'nlc::ResultString *' at 0x00000188723FE960> >
+2024-06-27 14:07:30,218 DEBUG: Read device error stack
+2024-06-27 14:07:30,234 DEBUG: The error stack has 0 elements
+2024-06-27 14:07:36,412 DEBUG: Disconnecting devices
+2024-06-27 14:07:36,422 DEBUG: Checking connection state
+2024-06-27 14:07:36,423 INFO: Connection state: {'motor 1': False, 'motor 2': False}
+2024-06-27 14:07:36,431 DEBUG: close all
+2024-06-27 14:08:41,557 DEBUG: Initializing adc_controller
+2024-06-27 14:09:08,676 DEBUG: Connecting devices
+2024-06-27 14:09:09,039 DEBUG: Checking connection state
+2024-06-27 14:09:09,078 INFO: Connection state: {'motor 1': True, 'motor 2': True}
+2024-06-27 14:09:09,088 DEBUG: Testing Profile Position mode
+2024-06-27 14:09:09,089 DEBUG: OD Example
+2024-06-27 14:09:09,089 DEBUG: Motor Stop (0x6040-0)
+2024-06-27 14:09:09,109 DEBUG: Reading subindex 0 of index 0x6040
+2024-06-27 14:09:09,125 DEBUG: Result: <nanotec_nanolib.Nanolib.ResultInt; proxy of <Swig Object of type 'nlc::ResultInt *' at 0x0000018871A997B0> >
+2024-06-27 14:09:09,126 DEBUG: Read Nanotec home page string
+2024-06-27 14:09:09,141 DEBUG: The home page of Nanotec Electronic GmbH & Co. KG is: <nanotec_nanolib.Nanolib.ResultString; proxy of <Swig Object of type 'nlc::ResultString *' at 0x00000188723D6F90> >
+2024-06-27 14:09:09,142 DEBUG: Read device error stack
+2024-06-27 14:09:09,157 DEBUG: The error stack has 0 elements
+2024-06-27 14:09:09,302 DEBUG: status_word = 4663
+2024-06-27 14:09:09,365 DEBUG: status_word = 4663
+2024-06-27 14:09:09,381 DEBUG: OD Example
+2024-06-27 14:09:09,382 DEBUG: Motor Stop (0x6040-0)
+2024-06-27 14:09:09,397 DEBUG: Reading subindex 0 of index 0x6040
+2024-06-27 14:09:09,413 DEBUG: Result: <nanotec_nanolib.Nanolib.ResultInt; proxy of <Swig Object of type 'nlc::ResultInt *' at 0x00000188723D6E70> >
+2024-06-27 14:09:09,414 DEBUG: Read Nanotec home page string
+2024-06-27 14:09:09,429 DEBUG: The home page of Nanotec Electronic GmbH & Co. KG is: <nanotec_nanolib.Nanolib.ResultString; proxy of <Swig Object of type 'nlc::ResultString *' at 0x0000018871E776F0> >
+2024-06-27 14:09:09,431 DEBUG: Read device error stack
+2024-06-27 14:09:09,446 DEBUG: The error stack has 0 elements
+2024-06-27 14:09:09,589 DEBUG: status_word = 37431
+2024-06-27 14:09:09,653 DEBUG: status_word = 37431
+2024-06-27 14:09:09,676 DEBUG: Disconnecting devices
+2024-06-27 14:09:09,695 DEBUG: Checking connection state
+2024-06-27 14:09:09,696 INFO: Connection state: {'motor 1': False, 'motor 2': False}
+2024-06-27 14:09:09,706 DEBUG: close all
+2024-07-25 15:25:46,743 DEBUG: Initializing adc_controller
+2024-07-25 15:26:45,269 DEBUG: Connecting devices
+2024-07-25 15:26:45,634 DEBUG: Checking connection state
+2024-07-25 15:26:45,663 INFO: Connection state: {'motor 1': True, 'motor 2': True}
+2024-07-25 15:26:45,692 DEBUG: Disconnecting devices
+2024-07-25 15:26:45,705 DEBUG: Checking connection state
+2024-07-25 15:26:45,706 INFO: Connection state: {'motor 1': False, 'motor 2': False}
+2024-07-25 15:26:45,717 DEBUG: close all
