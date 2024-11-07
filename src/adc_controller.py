@@ -9,16 +9,17 @@ import os
 import time
 import logging
 
+import asyncio
+
 from nanotec_nanolib import Nanolib
 
 __all__ = ["adc_controller"]
 
-# 설정 로깅
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s %(levelname)s: %(message)s',
     handlers=[
-        logging.FileHandler("adc_controller.log"),
+        logging.FileHandler("adc_controller.log", encoding='utf-8', errors='ignore'),
         logging.StreamHandler()
     ]
 )
@@ -33,12 +34,17 @@ class adc_controller:
     def find_devices(self):
         listAvailableBus = self.nanolib_accessor.listAvailableBusHardware()
         if listAvailableBus.hasError():
-            error_message = 'Error: listAvailableBusHardware() - ' + bus_hardware_ids.getError()
+            error_message = 'Error: listAvailableBusHardware() - ' + listAvailableBus.getError()
             logging.error(error_message)
             raise Exception(error_message)
-        bus_hardware_ids = listAvailableBus.getResult()
 
-        ind = 2   # input_device = "Serial Port (COM11)"
+        bus_hardware_ids = listAvailableBus.getResult()
+        logging.info("Available Bus Hardware IDs:")
+        for i in range(bus_hardware_ids.size()):
+            bus_id = bus_hardware_ids[i]
+            logging.info(f"ID {i}: {bus_id.toString() if hasattr(bus_id, 'toString') else str(bus_id)}")
+
+        ind = 6
         self.adc_motor_id = bus_hardware_ids[ind]
         
         self.adc_motor_options = Nanolib.BusHardwareOptions()
@@ -64,50 +70,84 @@ class adc_controller:
             raise Exception(error_message)
 
         self.device_ids = scan_devices.getResult()
-        
+        logging.info("Device IDs found:")
+        for i in range(self.device_ids.size()):
+            logging.info(f"ID {i}: {self.device_ids[i]}")
+
+        if not self.device_ids:
+            error_message = "No devices found during scan."
+            logging.error(error_message)
+            raise Exception(error_message)
+
         self.handles = []
         self.device_handle_1 = self.nanolib_accessor.addDevice(self.device_ids[0]).getResult()
         self.device_handle_2 = self.nanolib_accessor.addDevice(self.device_ids[1]).getResult()
+        logging.info(self.device_handle_1)
+        logging.info(self.device_handle_2)
         self.handles.append(self.device_handle_1)
         self.handles.append(self.device_handle_2)
+        self.device_1_connected = False  # Attribute to track device 1 connection status
+        self.device_2_connected = False  # Attribute to track device 2 connection status
 
     def connect(self):
         logging.debug("Connecting devices")
         try:
-            res1 = self.nanolib_accessor.connectDevice(self.device_handle_1)
-            res2 = self.nanolib_accessor.connectDevice(self.device_handle_2)
+            # Check if device 1 is already connected
+            if self.device_1_connected:
+                logging.info("Device 1 is already connected.")
+            else:
+                res1 = self.nanolib_accessor.connectDevice(self.device_handle_1)
+                if res1.hasError():
+                    error_message = 'Error: connectDevice() - ' + res1.getError()
+                    logging.error(error_message)
+                    raise Exception(error_message)
+                self.device_1_connected = True  # Set connection status to True upon success
 
-            if res1.hasError():
-                error_message = 'Error: connectDevice() - ' + res1.getError()
-                logging.error(error_message)
-                raise Exception(error_message)
-            if res2.hasError():
-                error_message = 'Error: connectDevice() - ' + res2.getError()
-                logging.error(error_message)
-                raise Exception(error_message)
-                
+            # Check if device 2 is already connected
+            if self.device_2_connected:
+                logging.info("Device 2 is already connected.")
+            else:
+                res2 = self.nanolib_accessor.connectDevice(self.device_handle_2)
+                if res2.hasError():
+                    error_message = 'Error: connectDevice() - ' + res2.getError()
+                    logging.error(error_message)
+                    raise Exception(error_message)
+                self.device_2_connected = True  # Set connection status to True upon success
+
         except Exception as e:
             logging.exception("An error occurred during connect: %s", e)
-            print(f"An error occurred: {e}")
+
 
     def disconnect(self):
         logging.debug("Disconnecting devices")
         try:
-            res1 = self.nanolib_accessor.disconnectDevice(self.device_handle_1)
-            res2 = self.nanolib_accessor.disconnectDevice(self.device_handle_2)
+            # Check if device 1 is connected before disconnecting
+            if self.device_1_connected:
+                res1 = self.nanolib_accessor.disconnectDevice(self.device_handle_1)
+                if res1.hasError():
+                    error_message = 'Error: disconnectDevice() - ' + res1.getError()
+                    logging.error(error_message)
+                    raise Exception(error_message)
+                self.device_1_connected = False  # Set connection status to False upon successful disconnect
+                logging.info("Device 1 disconnected successfully.")
+            else:
+                logging.info("Device 1 was not connected.")
 
-            if res1.hasError():
-                error_message = 'Error: disconnectDevice() - ' + res1.getError()
-                logging.error(error_message)
-                raise Exception(error_message)
-            if res2.hasError():
-                error_message = 'Error: disconnectDevice() - ' + res2.getError()
-                logging.error(error_message)
-                raise Exception(error_message)
+            # Check if device 2 is connected before disconnecting
+            if self.device_2_connected:
+                res2 = self.nanolib_accessor.disconnectDevice(self.device_handle_2)
+                if res2.hasError():
+                    error_message = 'Error: disconnectDevice() - ' + res2.getError()
+                    logging.error(error_message)
+                    raise Exception(error_message)
+                self.device_2_connected = False  # Set connection status to False upon successful disconnect
+                logging.info("Device 2 disconnected successfully.")
+            else:
+                logging.info("Device 2 was not connected.")
 
         except Exception as e:
             logging.exception("An error occurred during disconnect: %s", e)
-            print(f"An error occurred: {e}")
+
             
     def close(self):
         logging.debug("close all")
@@ -130,19 +170,13 @@ class adc_controller:
         return res
 
     def read_obj(self, MotorNum):
-        # readNumber(deviceHandle, odIndex)
-        # Nanolib.OdIndex(0xIndex, 0xSub-index)
-        # Description   Index   Sub-index   Aceess      Type        Value
-        # Controlword	6040	00	        read/write	UNSIGNED16	004D	
-        if MotorNum==1:
+        if MotorNum == 1:
             logging.debug(f'Read Motor {MotorNum}')
-            
             logging.debug("Reading subindex 0 of index 0x6040")
             status_word = self.nanolib_accessor.readNumber(self.device_handle_1, Nanolib.OdIndex(0x6040, 0x00))
             logging.debug('Result: %s', status_word)
-        elif MotorNum==2:
+        elif MotorNum == 2:
             logging.debug(f'Read Motor {MotorNum}')
-            
             logging.debug("Reading subindex 0 of index 0x6040")
             status_word = self.nanolib_accessor.readNumber(self.device_handle_2, Nanolib.OdIndex(0x6040, 0x00))
             logging.debug('Result: %s', status_word)
@@ -151,185 +185,125 @@ class adc_controller:
             logging.error(error_message)
             raise Exception(error_message)
 
-    def stop_motor(self, MotorNum):
-        logging.debug('Motor Stop (0x6040-0)')
-        if MotorNum==1:
-            self.nanolib_accessor.writeNumber(self.device_handle_1, -200, Nanolib.OdIndex(0x60FF, 0x00), 32)
-            
-            logging.debug("Reading subindex 0 of index 0x6040")
-            status_word = self.nanolib_accessor.readNumber(self.device_handle_1, Nanolib.OdIndex(0x60FF, 0x00))
-            logging.debug('Result: %s', status_word)
- 
-            logging.debug('Read device error stack')
-            readarrindex = Nanolib.OdIndex(0x1003, 0x00)
-            error_stack = self.nanolib_accessor.readNumberArray(self.device_handle_1, readarrindex.getIndex())
-            res = error_stack.getResult()
-            logging.debug('The error stack has %d elements', res[0])
-            
-        elif MotorNum==2:
-            self.nanolib_accessor.writeNumber(self.device_handle_2, -200, Nanolib.OdIndex(0x60FF, 0x00), 32)
-            
-            logging.debug("Reading subindex 0 of index 0x6040")
-            status_word = self.nanolib_accessor.readNumber(self.device_handle_2, Nanolib.OdIndex(0x60FF, 0x00))
-            logging.debug('Result: %s', status_word)
- 
-            logging.debug('Read device error stack')
-            readarrindex = Nanolib.OdIndex(0x1003, 0x00)
-            error_stack = self.nanolib_accessor.readNumberArray(self.device_handle_2, readarrindex.getIndex())
-            res = error_stack.getResult()
-            logging.debug('The error stack has %d elements', res[0])
-            
-        else:
-            error_message = 'Error: wrong MotorNum'
-            logging.error(error_message)
-            raise Exception(error_message)
+    async def move_motor(self, MotorNum, pos, vel=100):
+        """
+        Asynchronously move the specified motor to a target position at a given velocity in Profile Position mode.
 
-    def move_motor(self, MotorNum, pos, vel):
-        # 두 모터의 목표 position이 다르지??
-        logging.debug('Motor move sequently')
-        if MotorNum==1:
-            logging.debug(f'Motor move {self.device_ids[0]}')
-            logging.info('{}. {} [device id: {}, hardware: {}]'.format(
-                MotorNum, 
-                self.device_ids[0].getDescription(), 
-                self.device_ids[0].getDeviceId(), 
-                self.device_ids[0].getBusHardwareId().getName()
-                ))
-            
-            # stop a possibly running NanoJ program
-            # 이게 왜 필요하지? 일단 test할때 넣어두고 필요없으면 빼자
-            self.nanolib_accessor.writeNumber(self.device_handle_1, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
-            # choose Profile Position mode
-            self.nanolib_accessor.writeNumber(self.device_handle_1, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
-            # set the desired speed in rpm
-            self.nanolib_accessor.writeNumber(self.device_handle_1, vel, Nanolib.OdIndex(0x6081, 0x00), 32)
-            # set the desired target position
-            self.nanolib_accessor.writeNumber(self.device_handle_1, pos, Nanolib.OdIndex(0x607A, 0x00), 32)
-            # switch the state machine to "operation enabled"
-            self.nanolib_accessor.writeNumber(self.device_handle_1, 6, Nanolib.OdIndex(0x6040, 0x00), 16)
-            self.nanolib_accessor.writeNumber(self.device_handle_1, 7, Nanolib.OdIndex(0x6040, 0x00), 16)
-            self.nanolib_accessor.writeNumber(self.device_handle_1, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
-            
-            # move the motor to the desired target psoition relatively
-            self.nanolib_accessor.writeNumber(self.device_handle_1, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
-            
-            status_word = self.nanolib_accessor.readNumber(self.device_handle_1, Nanolib.OdIndex(0x6041, 0x00))
-            logging.debug(f"status_word = {status_word.getResult()}")
-            while(True):
-                status_word = self.nanolib_accessor.readNumber(self.device_handle_1, Nanolib.OdIndex(0x6041, 0x00))
-                logging.debug(f"status_word = {status_word.getResult()}")
-                if ((status_word.getResult() & 0x1400) == 0x1400):
-                    break
+        Parameters:
+        ----------
+        MotorNum : int
+            The motor number to control. Use `1` for `device_handle_1` and `2` for `device_handle_2`.
+        pos : int
+            The target position for the motor in encoder counts. The range is -4096 to 4096 for a full rotation,
+            where positive values move the motor clockwise and negative values move it counterclockwise.
+            Each encoder count corresponds to approximately 0.088 degrees (360 degrees / 4096 counts).
+        vel : int, optional
+            The target velocity in RPM for the motor. Default is 100 RPM, a moderate speed suitable for general use.
 
-    def test_PP(self):
-        logging.debug("Testing Profile Position mode")
-        for device_handle in self.handles:
-            self.object_dictionary_access_examples(device_handle)
-            # writeNumber(self, deviceHandle, value, odIndex, bitLength)
-            
-            # stop a possibly running NanoJ program
-            self.nanolib_accessor.writeNumber(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
-            
-            # choose Profile Position mode
-            self.nanolib_accessor.writeNumber(device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
-            
-            # set the desired speed in rpm
-            self.nanolib_accessor.writeNumber(device_handle, 100, Nanolib.OdIndex(0x6081, 0x00), 32)
-            
-            # set the desired target position
-            self.nanolib_accessor.writeNumber(device_handle, 36000, Nanolib.OdIndex(0x607A, 0x00), 32)
-            
-            # switch the state machine to "operation enabled"
-            self.nanolib_accessor.writeNumber(device_handle, 6, Nanolib.OdIndex(0x6040, 0x00), 16)
-            self.nanolib_accessor.writeNumber(device_handle, 7, Nanolib.OdIndex(0x6040, 0x00), 16)
-            self.nanolib_accessor.writeNumber(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
-            
-            # move the motor to the desired target psoition relatively
-            self.nanolib_accessor.writeNumber(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
-            
-            status_word = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6041, 0x00))
-            logging.debug(f"status_word = {status_word.getResult()}")
-            #while(True):
-            #    status_word = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6041, 0x00))
-            #    logging.debug(f"status_word = {status_word.getResult()}")
-            #    if ((status_word.getResult() & 0x1400) == 0x1400):
-            #        break
-                
-            self.nanolib_accessor.writeNumber(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
-            
-            # set the new desired target position
-            self.nanolib_accessor.writeNumber(device_handle, -36000, Nanolib.OdIndex(0x607A, 0x00), 32)
-            
-            # move the motor to the desired target psoition relatively
-            self.nanolib_accessor.writeNumber(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
+        Returns:
+        -------
+        dict
+            A dictionary containing the initial position, final position, and the position change in encoder counts,
+            along with the total execution time in seconds.
 
-            status_word = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6041, 0x00))
-            logging.debug(f"status_word = {status_word.getResult()}")            
-            #while(True):
-            #    status_word = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6041, 0x00))
-            #    logging.debug(f"status_word = {status_word.getResult()}")
-            #    if ((status_word.getResult() & 0x1400) == 0x1400):
-            #        break
-            
-            # stop the motor
-            self.nanolib_accessor.writeNumber(device_handle, 0x6, Nanolib.OdIndex(0x6040, 0x00), 16)
-
-    def test_PV(self):
-        logging.debug("Testing Profile Velocity mode")
-        for device_handle in self.handles:
-            self.object_dictionary_access_examples(device_handle)
-            
-            # stop a possibly running NanoJ program
-            self.nanolib_accessor.writeNumber(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
-            
-            # choose Profile Velocity mode
-            self.nanolib_accessor.writeNumber(device_handle, 3, Nanolib.OdIndex(0x6060, 0x00), 8)
-            
-            # set the desired speed in rpm
-            self.nanolib_accessor.writeNumber(device_handle, 100, Nanolib.OdIndex(0x60FF, 0x00), 32)
-            
-            # switch the state machine to "operation enabled"
-            self.nanolib_accessor.writeNumber(device_handle, 6, Nanolib.OdIndex(0x6040, 0x00), 16)
-            self.nanolib_accessor.writeNumber(device_handle, 7, Nanolib.OdIndex(0x6040, 0x00), 16)
-            self.nanolib_accessor.writeNumber(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
-            
-            # let the motor run for 3s
-            time.sleep(3)
-                
-            # stop the motor
-            self.nanolib_accessor.writeNumber(device_handle, 0x6, Nanolib.OdIndex(0x6040, 0x00), 16)
-            
-            # set the desired speed in rpm, now counterclockwise
-            self.nanolib_accessor.writeNumber(device_handle, -100, Nanolib.OdIndex(0x60FF, 0x00), 32)
-            
-            # start the motor    
-            self.nanolib_accessor.writeNumber(device_handle, 0xF, Nanolib.OdIndex(0x6040, 0x00), 16)
-            
-            # let the motor run for 3s
-            time.sleep(3)
-            
-            # stop the motor
-            self.nanolib_accessor.writeNumber(device_handle, 0x6, Nanolib.OdIndex(0x6040, 0x00), 16)
-    
-    def object_dictionary_access_examples(self, device_handle):
-        logging.debug('OD Example')
-
-        logging.debug('Motor Stop (0x6040-0)')
-        self.nanolib_accessor.writeNumber(device_handle, -200, Nanolib.OdIndex(0x60FF, 0x00), 32)
+        Raises:
+        ------
+        Exception
+            If an error occurs during motor movement, such as an invalid handle or failure to set
+            control parameters, an exception is raised with an appropriate error message.
+        """
+        logging.debug(f"Moving Motor {MotorNum} to position {pos} with velocity {vel}")
         
-        logging.debug("Reading subindex 0 of index 0x6040")
-        status_word = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x60FF, 0x00))
-        logging.debug('Result: %s', status_word)
+        start_time = time.time()  # 시작 시간 기록
+        
+        try:
+            # Set device handle based on MotorNum
+            device_handle = self.device_handle_1 if MotorNum == 1 else self.device_handle_2
+            if not device_handle:
+                raise Exception(f"Device handle for Motor {MotorNum} not found.")
+            
+            # Stop any running NanoJ program (optional step)
+            await asyncio.to_thread(self.nanolib_accessor.writeNumber, device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
 
-        logging.debug('Read Nanotec home page string')
-        home_page = self.nanolib_accessor.readString(device_handle, Nanolib.OdIndex(0x6505, 0x00))
-        logging.debug('The home page of Nanotec Electronic GmbH & Co. KG is: %s', home_page)
+            # Set Profile Position mode
+            await asyncio.to_thread(self.nanolib_accessor.writeNumber, device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
 
-        logging.debug('Read device error stack')
-        readarrindex = Nanolib.OdIndex(0x1003, 0x00)
-        error_stack = self.nanolib_accessor.readNumberArray(device_handle, readarrindex.getIndex())
-        res = error_stack.getResult()
-        logging.debug('The error stack has %d elements', res[0])
+            # Set velocity (in rpm)
+            await asyncio.to_thread(self.nanolib_accessor.writeNumber, device_handle, vel, Nanolib.OdIndex(0x6081, 0x00), 32)
+
+            # Set target position
+            await asyncio.to_thread(self.nanolib_accessor.writeNumber, device_handle, pos, Nanolib.OdIndex(0x607A, 0x00), 32)
+
+            # Enable operation state
+            for command in [6, 7, 0xF]:
+                await asyncio.to_thread(self.nanolib_accessor.writeNumber, device_handle, command, Nanolib.OdIndex(0x6040, 0x00), 16)
+
+            # Move motor to target position
+            await asyncio.to_thread(self.nanolib_accessor.writeNumber, device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
+
+            # Monitor until movement is complete
+            while True:
+                status_word = await asyncio.to_thread(self.nanolib_accessor.readNumber, device_handle, Nanolib.OdIndex(0x6041, 0x00))
+                logging.debug(f"Motor {MotorNum} status_word = {status_word.getResult()}")
+                if (status_word.getResult() & 0x1400) == 0x1400:
+                    logging.info(f"Motor {MotorNum} reached target position.")
+                    break
+                await asyncio.sleep(0.1)  # Small delay to allow other async tasks to run
+
+        except Exception as e:
+            logging.error(f"Failed to move Motor {MotorNum}: {e}")
+            raise
+        finally:
+            # 함수 실행 시간 기록
+            execution_time = time.time() - start_time
+            logging.info(f"Total execution time for move_motor (Motor {MotorNum}): {execution_time:.2f} seconds")
+
+
+    async def stop_motor(self, MotorNum):
+        """
+        Asynchronously stop the specified motor and log any errors from the error stack.
+
+        Parameters:
+        ----------
+        MotorNum : int
+            The motor number to stop. Use `1` for `device_handle_1` and `2` for `device_handle_2`.
+
+        Raises:
+        ------
+        Exception
+            If an error occurs while stopping the motor or accessing the device handle, an exception
+            is raised with an appropriate error message.
+        """
+        logging.debug(f"Stopping Motor {MotorNum}")
+
+        start_time = time.time()  # 시작 시간 기록
+        
+        try:
+            # Set device handle based on MotorNum
+            device_handle = self.device_handle_1 if MotorNum == 1 else self.device_handle_2
+            if not device_handle:
+                raise Exception(f"Device handle for Motor {MotorNum} not found.")
+
+            # Send stop command
+            await asyncio.to_thread(self.nanolib_accessor.writeNumber, device_handle, -200, Nanolib.OdIndex(0x60FF, 0x00), 32)
+
+            # Log current status word
+            status_word = await asyncio.to_thread(self.nanolib_accessor.readNumber, device_handle, Nanolib.OdIndex(0x60FF, 0x00))
+            logging.debug(f"Motor {MotorNum} stopped with status word: {status_word}")
+
+            # Read and log the error stack
+            readarrindex = Nanolib.OdIndex(0x1003, 0x00)
+            error_stack = await asyncio.to_thread(self.nanolib_accessor.readNumberArray, device_handle, readarrindex.getIndex())
+            error_count = error_stack.getResult()[0] if error_stack.getResult() else 0
+            logging.debug(f"Motor {MotorNum} error stack contains {error_count} elements")
+
+        except Exception as e:
+            logging.error(f"Failed to stop Motor {MotorNum}: {e}")
+            raise
+        finally:
+            # 함수 실행 시간 기록
+            execution_time = time.time() - start_time
+            logging.info(f"Total execution time for stop_motor (Motor {MotorNum}): {execution_time:.2f} seconds")
 
 
 
