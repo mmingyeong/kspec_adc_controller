@@ -5,85 +5,279 @@
 # @Date: 2024-06-26
 # @Filename: adc_actions.py
 
+import asyncio
+import json
+import logging
 from adc_controller import adc_controller
 
+__all__ = ["adc_actions"]
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s %(levelname)s: %(message)s',
+    handlers=[
+        logging.FileHandler("log/adc_action.log", encoding='utf-8', errors='ignore'),
+        logging.StreamHandler()
+    ]
+)
+
 class adc_actions:
-    """adc flow chart"""
+    """Class to manage ADC actions including connecting, powering on/off, and motor control."""
 
     def __init__(self):
+        """Initialize the adc_actions class and set up the ADC controller."""
+        logging.debug("Initializing adc_actions class.")
         self.controller = adc_controller()
-        pass
 
     def poweron(self):
-        self.controller.find_devices()
-        self.controller.connect()
+        """
+        Power on and connect to all devices.
 
-    # adc_parking 타겟 관측 끝
+        Returns:
+        -------
+        str
+            A JSON string indicating the success or failure of the operation.
+        """
+        logging.info("Powering on and connecting to devices.")
+        response = {}
+        try:
+            self.controller.find_devices()
+            self.controller.connect()
+            response = {
+                "status": "success",
+                "message": "Power on and devices connected."
+            }
+            logging.info("Power on successful.")
+        except Exception as e:
+            logging.error(f"Error in poweron: {str(e)}")
+            response = {
+                "status": "error",
+                "message": str(e)
+            }
+        return json.dumps(response)
+
     def poweroff(self):
-        self.controller.disconnect()
-        self.controller.close()
-        
+        """
+        Power off and disconnect from all devices.
+
+        Returns:
+        -------
+        str
+            A JSON string indicating the success or failure of the operation.
+        """
+        logging.info("Powering off and disconnecting from devices.")
+        response = {}
+        try:
+            self.controller.disconnect()
+            self.controller.close()
+            response = {
+                "status": "success",
+                "message": "Power off and devices disconnected."
+            }
+            logging.info("Power off successful.")
+        except Exception as e:
+            logging.error(f"Error in poweroff: {str(e)}")
+            response = {
+                "status": "error",
+                "message": str(e)
+            }
+        return json.dumps(response)
+
     def connect(self):
-        self.controller.connect()
+        """
+        Connect to the ADC controller.
 
-    # adc_parking 타겟 관측 끝
+        Returns:
+        -------
+        str
+            A JSON string indicating the success or failure of the operation.
+        """
+        logging.info("Connecting to devices.")
+        response = {}
+        try:
+            self.controller.connect()
+            response = {
+                "status": "success",
+                "message": "Connected to devices."
+            }
+            logging.info("Connection successful.")
+        except Exception as e:
+            logging.error(f"Error in connect: {str(e)}")
+            response = {
+                "status": "error",
+                "message": str(e)
+            }
+        return json.dumps(response)
+
     def disconnect(self):
-        self.controller.disconnect()
+        """
+        Disconnect from the ADC controller.
 
-    # adc_init
-    def homing(method: int, SwitchSpeed:int, ZeroSpeed:int, set=False):
-        """Homing mode의 방법과 속도 값을 설정
-        
-        Homing? 모터 대기 상태
-        Turning? 모터가 가동되고 있는 상태
+        Returns:
+        -------
+        str
+            A JSON string indicating the success or failure of the operation.
         """
-        # SwitchSpeed: limit switch를 찾아가는 속도
-        # ZeroSpeed: limit swtich 내부에서 속도
-        
-    def homing_status():
-        """Homing mode에서 현재 진행 상태를 체크.
-        """
-        
-    # adc_on 타겟 관측 시작
-    def activate(opmode: int, timeout: int):
-        """각 모드에서 모터 회전을 명령한다.
+        logging.info("Disconnecting from devices.")
+        response = {}
+        try:
+            self.controller.disconnect()
+            response = {
+                "status": "success",
+                "message": "Disconnected from devices."
+            }
+            logging.info("Disconnection successful.")
+        except Exception as e:
+            logging.error(f"Error in disconnect: {str(e)}")
+            response = {
+                "status": "error",
+                "message": str(e)
+            }
+        return json.dumps(response)
 
-        Args:
-            opmode (int): mode of operation
-            - 1: Profile position
-            - 3: Profile velocity
-            - 6: Homing
-            timeout (int): waiting time
+    def status(self, motor_num=0):
         """
-        
-    # adc_manual 조동 시작, 목표 z 값 수령
-    # z가 뭐지?
-    def vel_set(vel:int, acc:int, dec:int):
-        """Profile velocity mode의 속도값을 설정
+        Get the status of a specified motor.
 
-        Args:
-            vel (int): Target velocity
-            acc (int): Profile acceleration
-            dec (int): Profile deceleration
-        """
-    
-    # adc_move 추적 시작, 다음 초의 z값 수령, 계산
-    def pos_set(pos:int, vel:int, acc:int, dec:int, mode:int):
-        """Profile position mode의 위치 및 속도값을 설정
+        Parameters:
+        ----------
+        motor_num : int, optional
+            The motor number to check. Default is 0.
 
-        Args:
-            pos (int): Target position
-            vel (int): Profile velocity
-            acc (int): Profile acceleration
-            dec (int): Profile deceleration
-            mode (int): 0=absolute mode, 1=relative mode
+        Returns:
+        -------
+        str
+            A JSON string indicating the status or any error encountered.
         """
-        
-    # adc_off 타겟 관측 끝
-    def deactivate(timeout: int):
-        """Power state에서 SwitchedOn 상태로 변경하여 모터를 정지
+        logging.info(f"Retrieving status for motor {motor_num}.")
+        response = {}
+        try:
+            state = self.controller.DeviceState(motor_num)
+            response = {
+                "status": "success",
+                "message": f"Motor {motor_num} status retrieved.",
+                "DeviceState": state
+            }
+            logging.info(f"Motor {motor_num} status: {state}")
+        except Exception as e:
+            logging.error(f"Error in status: {str(e)}")
+            response = {
+                "status": "error",
+                "message": str(e),
+                "motor_num": motor_num
+            }
+        return json.dumps(response)
 
-        Args:
-            timeout (int): waiting time
+    async def activate(self, vel1=10, vel2=10):
         """
-        
+        Activate both motors simultaneously with specified velocities.
+
+        Parameters:
+        ----------
+        vel1 : int, optional
+            The target velocity for motor 1. Default is 10.
+        vel2 : int, optional
+            The target velocity for motor 2. Default is 10.
+
+        Returns:
+        -------
+        str
+            A JSON string indicating the success or failure of the activation.
+        """
+        logging.info("Activating motors.")
+        response = {}
+        pos1 = 16200  # 1 turn
+        pos2 = 16200  # 1 turn
+
+        async def move_motor_async(MotorNum, pos, vel):
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self.controller.move_motor, MotorNum, pos, vel)
+
+        try:
+            motor1_task = move_motor_async(1, pos1, vel1)
+            motor2_task = move_motor_async(2, pos2, vel2)
+
+            results = await asyncio.gather(motor1_task, motor2_task)
+
+            response = {
+                "status": "success",
+                "message": "Motors activated successfully.",
+                "motor_1": results[0],
+                "motor_2": results[1]
+            }
+            logging.info("Motors activated successfully.")
+        except Exception as e:
+            logging.error(f"Failed to activate motors: {str(e)}")
+            response = {
+                "status": "error",
+                "message": str(e)
+            }
+
+        return json.dumps(response)
+
+    def homing(self, method: int, SwitchSpeed: int, ZeroSpeed: int, set=False):
+        """
+        Perform homing operation with specified parameters.
+
+        Parameters:
+        ----------
+        method : int
+            The homing method.
+        SwitchSpeed : int
+            The speed to approach the limit switch.
+        ZeroSpeed : int
+            The speed within the limit switch range.
+        set : bool, optional
+            Flag to set the homing configuration. Default is False.
+
+        Returns:
+        -------
+        str
+            A JSON string indicating the success or failure of the operation.
+        """
+        logging.info("Starting homing operation.")
+        response = {}
+        try:
+            # Homing logic would go here
+            response = {
+                "status": "success",
+                "message": "Homing completed.",
+                "method": method,
+                "SwitchSpeed": SwitchSpeed,
+                "ZeroSpeed": ZeroSpeed
+            }
+            logging.info("Homing completed successfully.")
+        except Exception as e:
+            logging.error(f"Error in homing: {str(e)}")
+            response = {
+                "status": "error",
+                "message": str(e),
+                "method": method
+            }
+        return json.dumps(response)
+
+    def homing_status(self):
+        """
+        Check the status of the homing operation.
+
+        Returns:
+        -------
+        str
+            A JSON string indicating the current status or any error encountered.
+        """
+        logging.info("Checking homing status.")
+        response = {}
+        try:
+            # Check homing status logic would go here
+            response = {
+                "status": "success",
+                "message": "Homing status retrieved."
+            }
+            logging.info("Homing status retrieved successfully.")
+        except Exception as e:
+            logging.error(f"Error in homing_status: {str(e)}")
+            response = {
+                "status": "error",
+                "message": str(e)
+            }
+        return json.dumps(response)

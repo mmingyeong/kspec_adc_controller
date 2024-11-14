@@ -1,0 +1,127 @@
+2024-11-14 16:21:26,738 DEBUG: Initializing adc_controller
+2024-11-14 16:21:42,478 INFO: Available Bus Hardware IDs:
+2024-11-14 16:21:42,481 INFO: ID 0: BusHardwareId(  * 11 (TAP-Windows Adapter V9 - SecuwaySSLU)) [bus hardware: Network Adapter, protocol: EtherCAT, hardware specifier: {D5F0D774-1012-4047-A3CD-6C88B9D70E44}]
+2024-11-14 16:21:42,483 INFO: ID 1: BusHardwareId(Wi-Fi (Intel(R) Wi-Fi 6E AX211 160MHz)) [bus hardware: Network Adapter, protocol: EtherCAT, hardware specifier: {B6138315-2713-47C0-8C29-1FE16F01733C}]
+2024-11-14 16:21:42,485 INFO: ID 2: BusHardwareId(Serial Port (COM4)) [bus hardware: Serial Port, protocol: MODBUS RTU, hardware specifier: COM4]
+2024-11-14 16:21:42,498 INFO: ID 3: BusHardwareId(Serial Port (COM6)) [bus hardware: Serial Port, protocol: MODBUS RTU, hardware specifier: COM6]
+2024-11-14 16:21:42,499 INFO: ID 4: BusHardwareId(Serial Port (COM3)) [bus hardware: Serial Port, protocol: MODBUS RTU, hardware specifier: COM3]
+2024-11-14 16:21:42,501 INFO: ID 5: BusHardwareId(Serial Port (COM8)) [bus hardware: Serial Port, protocol: MODBUS RTU, hardware specifier: COM8]
+2024-11-14 16:21:42,502 INFO: ID 6: BusHardwareId(Serial Port (COM10)) [bus hardware: Serial Port, protocol: MODBUS RTU, hardware specifier: COM10]
+2024-11-14 16:21:42,503 INFO: ID 7: BusHardwareId(USB Bus) [bus hardware: USB BUS, protocol: MODBUS VCP, hardware specifier: UsbRoot0, extra hardware specifier: UsbBusVcp]
+2024-11-14 16:21:42,505 INFO: ID 8: BusHardwareId(  * 11 (TAP-Windows Adapter V9 - SecuwaySSLU)) [bus hardware: Network Adapter, protocol: MODBUS TCP, hardware specifier: {D5F0D774-1012-4047-A3CD-6C88B9D70E44}]
+2024-11-14 16:21:42,506 INFO: ID 9: BusHardwareId(Wi-Fi (Intel(R) Wi-Fi 6E AX211 160MHz)) [bus hardware: Network Adapter, protocol: MODBUS TCP, hardware specifier: {B6138315-2713-47C0-8C29-1FE16F01733C}]
+2024-11-14 16:21:42,507 INFO: ID 10: BusHardwareId(  * 11 (TAP-Windows Adapter V9 - SecuwaySSLU)) [bus hardware: Network Adapter, protocol: RESTful API, hardware specifier: {D5F0D774-1012-4047-A3CD-6C88B9D70E44}]
+2024-11-14 16:21:42,508 INFO: ID 11: BusHardwareId(Wi-Fi (Intel(R) Wi-Fi 6E AX211 160MHz)) [bus hardware: Network Adapter, protocol: RESTful API, hardware specifier: {B6138315-2713-47C0-8C29-1FE16F01733C}]
+2024-11-14 16:21:42,509 INFO: ID 12: BusHardwareId(USB Bus) [bus hardware: USB BUS, protocol: MSC, hardware specifier: UsbRoot0, extra hardware specifier: UsbBusMsc]
+2024-11-14 16:22:25,139 INFO: Device IDs found:
+2024-11-14 16:22:25,141 INFO: ID 0: <nanotec_nanolib.Nanolib.DeviceId; proxy of <Swig Object of type 'nlc::DeviceId *' at 0x000002A5836739F0> >
+2024-11-14 16:22:25,142 INFO: ID 1: <nanotec_nanolib.Nanolib.DeviceId; proxy of <Swig Object of type 'nlc::DeviceId *' at 0x000002A5836739F0> >
+2024-11-14 16:22:25,143 INFO: <nanotec_nanolib.Nanolib.DeviceHandle; proxy of <Swig Object of type 'nlc::DeviceHandle *' at 0x000002A5836739F0> >
+2024-11-14 16:22:25,146 INFO: <nanotec_nanolib.Nanolib.DeviceHandle; proxy of <Swig Object of type 'nlc::DeviceHandle *' at 0x000002A583673870> >
+2024-11-14 16:22:25,147 DEBUG: Connecting devices
+2024-11-14 16:22:25,326 INFO: Device 1 connected successfully.
+2024-11-14 16:22:25,501 INFO: Device 2 connected successfully.
+2024-11-14 16:22:25,523 DEBUG: Connecting devices
+2024-11-14 16:22:25,548 DEBUG: Checking device and connection states, including Modbus RTU network status
+2024-11-14 16:22:25,581 INFO: Device states: {'motor1': {'connection_state': True, 'device_state': '', 'extra_state': True}, 'motor2': {'connection_state': True, 'device_state': '', 'extra_state': True}}
+2024-11-14 16:22:25,608 ERROR: Failed to activate motors: 'adc_actions' object has no attribute 'move_motor'
+2024-11-14 16:23:22,742 ERROR: Failed to activate motors: 'adc_actions' object has no attribute 'move_motor'
+2024-11-14 16:23:41,799 DEBUG: Disconnecting devices
+2024-11-14 16:23:41,800 INFO: Device 1 disconnected successfully.
+2024-11-14 16:23:41,801 INFO: Device 2 disconnected successfully.
+2024-11-14 16:23:41,802 DEBUG: Disconnecting devices
+2024-11-14 16:23:41,803 INFO: Device 1 was not connected.
+2024-11-14 16:23:41,804 INFO: Device 2 was not connected.
+2024-11-14 16:23:41,805 DEBUG: close all
+2024-11-14 16:24:15,471 DEBUG: Initializing adc_actions class.
+2024-11-14 16:24:15,472 DEBUG: Initializing adc_controller
+2024-11-14 16:24:15,484 INFO: Powering on and connecting to devices.
+2024-11-14 16:24:31,176 INFO: Available Bus Hardware IDs:
+2024-11-14 16:24:31,179 INFO: ID 0: BusHardwareId(  * 11 (TAP-Windows Adapter V9 - SecuwaySSLU)) [bus hardware: Network Adapter, protocol: EtherCAT, hardware specifier: {D5F0D774-1012-4047-A3CD-6C88B9D70E44}]
+2024-11-14 16:24:31,180 INFO: ID 1: BusHardwareId(Wi-Fi (Intel(R) Wi-Fi 6E AX211 160MHz)) [bus hardware: Network Adapter, protocol: EtherCAT, hardware specifier: {B6138315-2713-47C0-8C29-1FE16F01733C}]
+2024-11-14 16:24:31,182 INFO: ID 2: BusHardwareId(Serial Port (COM4)) [bus hardware: Serial Port, protocol: MODBUS RTU, hardware specifier: COM4]
+2024-11-14 16:24:31,183 INFO: ID 3: BusHardwareId(Serial Port (COM6)) [bus hardware: Serial Port, protocol: MODBUS RTU, hardware specifier: COM6]
+2024-11-14 16:24:31,184 INFO: ID 4: BusHardwareId(Serial Port (COM3)) [bus hardware: Serial Port, protocol: MODBUS RTU, hardware specifier: COM3]
+2024-11-14 16:24:31,185 INFO: ID 5: BusHardwareId(Serial Port (COM8)) [bus hardware: Serial Port, protocol: MODBUS RTU, hardware specifier: COM8]
+2024-11-14 16:24:31,186 INFO: ID 6: BusHardwareId(Serial Port (COM10)) [bus hardware: Serial Port, protocol: MODBUS RTU, hardware specifier: COM10]
+2024-11-14 16:24:31,188 INFO: ID 7: BusHardwareId(USB Bus) [bus hardware: USB BUS, protocol: MODBUS VCP, hardware specifier: UsbRoot0, extra hardware specifier: UsbBusVcp]
+2024-11-14 16:24:31,189 INFO: ID 8: BusHardwareId(  * 11 (TAP-Windows Adapter V9 - SecuwaySSLU)) [bus hardware: Network Adapter, protocol: MODBUS TCP, hardware specifier: {D5F0D774-1012-4047-A3CD-6C88B9D70E44}]
+2024-11-14 16:24:31,190 INFO: ID 9: BusHardwareId(Wi-Fi (Intel(R) Wi-Fi 6E AX211 160MHz)) [bus hardware: Network Adapter, protocol: MODBUS TCP, hardware specifier: {B6138315-2713-47C0-8C29-1FE16F01733C}]
+2024-11-14 16:24:31,191 INFO: ID 10: BusHardwareId(  * 11 (TAP-Windows Adapter V9 - SecuwaySSLU)) [bus hardware: Network Adapter, protocol: RESTful API, hardware specifier: {D5F0D774-1012-4047-A3CD-6C88B9D70E44}]
+2024-11-14 16:24:31,192 INFO: ID 11: BusHardwareId(Wi-Fi (Intel(R) Wi-Fi 6E AX211 160MHz)) [bus hardware: Network Adapter, protocol: RESTful API, hardware specifier: {B6138315-2713-47C0-8C29-1FE16F01733C}]
+2024-11-14 16:24:31,193 INFO: ID 12: BusHardwareId(USB Bus) [bus hardware: USB BUS, protocol: MSC, hardware specifier: UsbRoot0, extra hardware specifier: UsbBusMsc]
+2024-11-14 16:25:13,879 INFO: Device IDs found:
+2024-11-14 16:25:13,882 INFO: ID 0: <nanotec_nanolib.Nanolib.DeviceId; proxy of <Swig Object of type 'nlc::DeviceId *' at 0x0000015E670D0330> >
+2024-11-14 16:25:13,884 INFO: ID 1: <nanotec_nanolib.Nanolib.DeviceId; proxy of <Swig Object of type 'nlc::DeviceId *' at 0x0000015E670D0330> >
+2024-11-14 16:25:13,887 INFO: <nanotec_nanolib.Nanolib.DeviceHandle; proxy of <Swig Object of type 'nlc::DeviceHandle *' at 0x0000015E670D0330> >
+2024-11-14 16:25:13,889 INFO: <nanotec_nanolib.Nanolib.DeviceHandle; proxy of <Swig Object of type 'nlc::DeviceHandle *' at 0x0000015E670D0270> >
+2024-11-14 16:25:13,891 DEBUG: Connecting devices
+2024-11-14 16:25:14,075 INFO: Device 1 connected successfully.
+2024-11-14 16:25:14,251 INFO: Device 2 connected successfully.
+2024-11-14 16:25:14,254 INFO: Power on successful.
+2024-11-14 16:25:14,279 INFO: Connecting to devices.
+2024-11-14 16:25:14,282 DEBUG: Connecting devices
+2024-11-14 16:25:14,282 INFO: Connection successful.
+2024-11-14 16:25:14,298 INFO: Retrieving status for motor 0.
+2024-11-14 16:25:14,299 DEBUG: Checking device and connection states, including Modbus RTU network status
+2024-11-14 16:25:14,331 INFO: Device states: {'motor1': {'connection_state': True, 'device_state': '', 'extra_state': True}, 'motor2': {'connection_state': True, 'device_state': '', 'extra_state': True}}
+2024-11-14 16:25:14,333 INFO: Motor 0 status: {'motor1': {'connection_state': True, 'device_state': '', 'extra_state': True}, 'motor2': {'connection_state': True, 'device_state': '', 'extra_state': True}}
+2024-11-14 16:25:14,344 INFO: Activating motors.
+2024-11-14 16:25:14,347 DEBUG: Moving Motor 1 to position 16200 with velocity 10
+2024-11-14 16:25:14,351 DEBUG: Moving Motor 2 to position 16200 with velocity 10
+2024-11-14 16:25:14,635 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:25:14,667 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:25:19,657 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:25:19,688 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:25:24,678 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:25:24,710 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:25:29,699 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:25:29,731 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:25:34,719 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:25:34,752 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:25:39,741 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:25:39,773 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:25:44,762 DEBUG: Motor 1 status_word = 5687
+2024-11-14 16:25:44,765 INFO: Motor 1 reached target position.
+2024-11-14 16:25:44,779 INFO: Total execution time for move_motor (Motor 1): 30.43 seconds
+2024-11-14 16:25:44,781 INFO: {'initial_position': 74550, 'final_position': 90750, 'position_change': 16200, 'execution_time': 30.42711567878723}
+2024-11-14 16:25:44,795 DEBUG: Motor 2 status_word = 38455
+2024-11-14 16:25:44,797 INFO: Motor 2 reached target position.
+2024-11-14 16:25:44,811 INFO: Total execution time for move_motor (Motor 2): 30.44 seconds
+2024-11-14 16:25:44,813 INFO: {'initial_position': 16200, 'final_position': 32400, 'position_change': 16200, 'execution_time': 30.44467067718506}
+2024-11-14 16:25:44,814 INFO: Motors activated successfully.
+2024-11-14 16:26:02,821 INFO: Activating motors.
+2024-11-14 16:26:02,822 DEBUG: Moving Motor 1 to position 16200 with velocity 10
+2024-11-14 16:26:02,823 DEBUG: Moving Motor 2 to position 16200 with velocity 10
+2024-11-14 16:26:03,024 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:26:03,136 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:26:08,047 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:26:08,159 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:26:13,067 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:26:13,180 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:26:18,089 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:26:18,201 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:26:23,110 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:26:23,222 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:26:28,131 DEBUG: Motor 1 status_word = 4663
+2024-11-14 16:26:28,244 DEBUG: Motor 2 status_word = 37431
+2024-11-14 16:26:33,153 DEBUG: Motor 1 status_word = 5687
+2024-11-14 16:26:33,156 INFO: Motor 1 reached target position.
+2024-11-14 16:26:33,169 INFO: Total execution time for move_motor (Motor 1): 30.35 seconds
+2024-11-14 16:26:33,171 INFO: {'initial_position': 90750, 'final_position': 106950, 'position_change': 16200, 'execution_time': 30.34632444381714}
+2024-11-14 16:26:33,264 DEBUG: Motor 2 status_word = 38455
+2024-11-14 16:26:33,268 INFO: Motor 2 reached target position.
+2024-11-14 16:26:33,281 INFO: Total execution time for move_motor (Motor 2): 30.46 seconds
+2024-11-14 16:26:33,282 INFO: {'initial_position': 32400, 'final_position': 48600, 'position_change': 16200, 'execution_time': 30.45680332183838}
+2024-11-14 16:26:33,285 INFO: Motors activated successfully.
+2024-11-14 16:26:48,759 INFO: Disconnecting from devices.
+2024-11-14 16:26:48,761 DEBUG: Disconnecting devices
+2024-11-14 16:26:48,762 INFO: Device 1 disconnected successfully.
+2024-11-14 16:26:48,763 INFO: Device 2 disconnected successfully.
+2024-11-14 16:26:48,764 INFO: Disconnection successful.
+2024-11-14 16:26:48,765 INFO: Powering off and disconnecting from devices.
+2024-11-14 16:26:48,766 DEBUG: Disconnecting devices
+2024-11-14 16:26:48,767 INFO: Device 1 was not connected.
+2024-11-14 16:26:48,768 INFO: Device 2 was not connected.
+2024-11-14 16:26:48,769 DEBUG: close all
+2024-11-14 16:26:48,877 INFO: Power off successful.
