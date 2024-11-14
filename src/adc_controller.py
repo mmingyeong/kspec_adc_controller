@@ -204,7 +204,6 @@ class adc_controller:
         except Exception as e:
             logging.exception("An error occurred during disconnect: %s", e)
 
-
             
     def close(self):
         logging.debug("close all")
