@@ -168,16 +168,16 @@ class adc_actions:
             }
         return json.dumps(response)
 
-    async def activate(self, vel1=10, vel2=10):
+    async def activate(self, pos:int, vel1=5, vel2=5):
         """
         Activate both motors simultaneously with specified velocities.
 
         Parameters:
         ----------
         vel1 : int, optional
-            The target velocity for motor 1. Default is 10.
+            The target velocity for motor 1. Default is 5.
         vel2 : int, optional
-            The target velocity for motor 2. Default is 10.
+            The target velocity for motor 2. Default is 5.
 
         Returns:
         -------
@@ -186,16 +186,14 @@ class adc_actions:
         """
         logging.info("Activating motors.")
         response = {}
-        pos1 = 16200  # 1 turn
-        pos2 = 16200  # 1 turn
 
         async def move_motor_async(MotorNum, pos, vel):
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, self.controller.move_motor, MotorNum, pos, vel)
 
         try:
-            motor1_task = move_motor_async(1, pos1, vel1)
-            motor2_task = move_motor_async(2, pos2, vel2)
+            motor1_task = move_motor_async(1, pos, vel1)
+            motor2_task = move_motor_async(2, pos, vel2)
 
             results = await asyncio.gather(motor1_task, motor2_task)
 
@@ -215,20 +213,9 @@ class adc_actions:
 
         return json.dumps(response)
 
-    def homing(self, method: int, SwitchSpeed: int, ZeroSpeed: int, set=False):
+    def homing(self):
         """
         Perform homing operation with specified parameters.
-
-        Parameters:
-        ----------
-        method : int
-            The homing method.
-        SwitchSpeed : int
-            The speed to approach the limit switch.
-        ZeroSpeed : int
-            The speed within the limit switch range.
-        set : bool, optional
-            Flag to set the homing configuration. Default is False.
 
         Returns:
         -------
@@ -238,13 +225,10 @@ class adc_actions:
         logging.info("Starting homing operation.")
         response = {}
         try:
-            # Homing logic would go here
+            state = self.controller.homing()
             response = {
                 "status": "success",
                 "message": "Homing completed.",
-                "method": method,
-                "SwitchSpeed": SwitchSpeed,
-                "ZeroSpeed": ZeroSpeed
             }
             logging.info("Homing completed successfully.")
         except Exception as e:
@@ -252,32 +236,5 @@ class adc_actions:
             response = {
                 "status": "error",
                 "message": str(e),
-                "method": method
-            }
-        return json.dumps(response)
-
-    def homing_status(self):
-        """
-        Check the status of the homing operation.
-
-        Returns:
-        -------
-        str
-            A JSON string indicating the current status or any error encountered.
-        """
-        logging.info("Checking homing status.")
-        response = {}
-        try:
-            # Check homing status logic would go here
-            response = {
-                "status": "success",
-                "message": "Homing status retrieved."
-            }
-            logging.info("Homing status retrieved successfully.")
-        except Exception as e:
-            logging.error(f"Error in homing_status: {str(e)}")
-            response = {
-                "status": "error",
-                "message": str(e)
             }
         return json.dumps(response)

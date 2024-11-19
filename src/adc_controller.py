@@ -43,7 +43,7 @@ class adc_controller:
             bus_id = bus_hardware_ids[i]
             logging.info(f"ID {i}: {bus_id.toString() if hasattr(bus_id, 'toString') else str(bus_id)}")
 
-        ind = 6
+        ind = 2  # 초기 설정에 확인해야 할 파라미터
         self.adc_motor_id = bus_hardware_ids[ind]
         
         self.adc_motor_options = Nanolib.BusHardwareOptions()
@@ -215,7 +215,73 @@ class adc_controller:
             logging.error(error_message)
             raise Exception(error_message)
 
-    def move_motor(self, MotorNum, pos, vel=10):
+    def homing(self):
+        """
+        Move both motors to their home position (Position actual value = 0).
+
+        This function checks if motor 1 and motor 2 are already at their home positions.
+        If not, it uses the `move_motor` method to move them to Position actual value = 0.
+        If they are already at home, it logs a message indicating that no movement is needed.
+
+        Raises:
+        ------
+        Exception
+            If an error occurs during the homing process, an exception is raised
+            with an appropriate error message.
+        """
+        logging.debug("Starting the homing process for both motors...")
+
+        try:
+            # Check if both motors are connected
+            if not self.device_1_connected or not self.device_2_connected:
+                raise Exception("Error: Both motors must be connected before performing homing.")
+            logging.info("Both motors are confirmed to be connected.")
+
+            # Read the current positions of both motors
+            device_handle_1 = self.device_handle_1
+            device_handle_2 = self.device_handle_2
+
+            logging.debug("Reading the initial position of Motor 1...")
+            current_abs_pos_1 = self.nanolib_accessor.readNumber(device_handle_1, Nanolib.OdIndex(0x6064, 0x00)).getResult()
+            logging.info(f"Motor 1 initial position read as: {current_abs_pos_1}")
+
+            logging.debug("Reading the initial position of Motor 2...")
+            current_abs_pos_2 = self.nanolib_accessor.readNumber(device_handle_2, Nanolib.OdIndex(0x6064, 0x00)).getResult()
+            logging.info(f"Motor 2 initial position read as: {current_abs_pos_2}")
+
+            # Check if both motors are already at the home position
+            if current_abs_pos_1 == 0 and current_abs_pos_2 == 0:
+                logging.info("Both motors are already at the home position. No movement needed.")
+                return
+            elif current_abs_pos_1 == 0:
+                logging.info("Motor 1 is already at the home position. Only Motor 2 will be moved.")
+            elif current_abs_pos_2 == 0:
+                logging.info("Motor 2 is already at the home position. Only Motor 1 will be moved.")
+
+            start_time = time.time()  # Record the start time
+
+            # Move Motor 1 to home position if not already there
+            if current_abs_pos_1 != 0:
+                target_pos = -current_abs_pos_1
+                logging.info("Moving Motor 1 to home position (0)...")
+                move_result = self.move_motor(1, target_pos)  # Use move_motor to move Motor 1 to position 0
+                logging.info(f"Motor 1 move result: {move_result}")
+
+            # Move Motor 2 to home position if not already there
+            if current_abs_pos_2 != 0:
+                target_pos = -current_abs_pos_2
+                logging.info("Moving Motor 2 to home position (0)...")
+                move_result = self.move_motor(2, target_pos)  # Use move_motor to move Motor 2 to position 0
+                logging.info(f"Motor 2 move result: {move_result}")
+
+            execution_time = time.time() - start_time
+            logging.info(f"Homing process completed in {execution_time:.2f} seconds")
+
+        except Exception as e:
+            logging.error(f"Failed to home motors: {e}")
+            raise
+
+    def move_motor(self, MotorNum, pos, vel=5):
         """
         Synchronously move the specified motor to a target position at a given velocity in Profile Position mode.
 
@@ -224,9 +290,9 @@ class adc_controller:
         MotorNum : int
             The motor number to control. Use `1` for `device_handle_1` and `2` for `device_handle_2`.
         pos : int
-            The target position for the motor in encoder counts. The range is -4096 to 4096 for a full rotation,
-            where positive values move the motor clockwise and negative values move it counterclockwise.
-            Each encoder count corresponds to approximately 0.088 degrees (360 degrees / 4096 counts).
+            The target position for the motor in encoder counts. The range is -16,200 to 16,200 for a full rotation,
+            where positive values move the motor counterclockwise and negative values move it clockwise.
+            Each encoder count corresponds to approximately 0.088 degrees (360 degrees / 16,200 counts).
         vel : int, optional
             The target velocity in RPM for the motor. Default is 10 RPM.
 
@@ -260,25 +326,38 @@ class adc_controller:
                 raise Exception(f"Device handle for Motor {MotorNum} not found.")
             
             # Stop any running NanoJ program
+            # NanoJ Control: 0x2300
+            # 0: false, 1: true
             self.nanolib_accessor.writeNumber(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
 
             # Set Profile Position mode
-            self.nanolib_accessor.writeNumber(device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
+            # Modes of operation
+            # Modes of operation: 0x6060
+            # Modes of operation display: 0x6061
+            res = self.nanolib_accessor.writeNumber(device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
+            operation = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6061, 0x00))
+            logging.info(f"Modes of operation display: {operation.getResult()}")
 
             # Set velocity (in rpm)
-            self.nanolib_accessor.writeNumber(device_handle, vel, Nanolib.OdIndex(0x6081, 0x00), 32)
+            # Profile velocity: 0x6081
+            res = self.nanolib_accessor.writeNumber(device_handle, vel, Nanolib.OdIndex(0x6081, 0x00), 32)
+            logging.info(f"{res}")
 
             # Set target position
+            # Target Position: 0x607A
             init_pos = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6064, 0x00))
             initial_position = init_pos.getResult()
-            self.nanolib_accessor.writeNumber(device_handle, pos, Nanolib.OdIndex(0x607A, 0x00), 32)
+            res = self.nanolib_accessor.writeNumber(device_handle, pos, Nanolib.OdIndex(0x607A, 0x00), 32)
+            logging.info(f"{res}")
 
             # Enable operation state
             for command in [6, 7, 0xF]:
-                self.nanolib_accessor.writeNumber(device_handle, command, Nanolib.OdIndex(0x6040, 0x00), 16)
+                res = self.nanolib_accessor.writeNumber(device_handle, command, Nanolib.OdIndex(0x6040, 0x00), 16)
+                logging.info(f"{res}")
 
             # Move motor to target position
-            self.nanolib_accessor.writeNumber(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
+            res = self.nanolib_accessor.writeNumber(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
+            logging.info(f"{res}")
 
             # Monitor until movement is complete
             while True:
@@ -311,9 +390,57 @@ class adc_controller:
 
         return res
 
+    def read_motor_position(self, motor_number):
+        """
+        Read and return the current position of the specified motor.
 
+        Parameters:
+        ----------
+        motor_number : int
+            The motor number to read from. Use `1` for `device_handle_1` and `2` for `device_handle_2`.
 
-    def DeviceState(self, motor_num=0):
+        Returns:
+        -------
+        int
+            The current position of the motor in encoder counts.
+
+        Raises:
+        ------
+        Exception
+            If the motor is not connected or if an error occurs during the read operation.
+        """
+        logging.debug(f"Reading position of Motor {motor_number}")
+
+        # Check if the motor is connected
+        if motor_number == 1 and not self.device_1_connected:
+            raise Exception("Error: Motor 1 is not connected. Please connect it before reading the position.")
+        elif motor_number == 2 and not self.device_2_connected:
+            raise Exception("Error: Motor 2 is not connected. Please connect it before reading the position.")
+
+        try:
+            # Select the appropriate device handle
+            device_handle = self.device_handle_1 if motor_number == 1 else self.device_handle_2
+            if not device_handle:
+                raise Exception(f"Device handle for Motor {motor_number} not found.")
+
+            # Read the current position from the motor
+            # Position actual value: 0x6064
+            position_result = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6064, 0x00))
+            if position_result.hasError():
+                error_message = f"Error: readNumber() - {position_result.getError()}"
+                logging.error(error_message)
+                raise Exception(error_message)
+
+            # Get and return the current position
+            current_position = position_result.getResult()
+            logging.info(f"Motor {motor_number} current position: {current_position}")
+            return current_position
+
+        except Exception as e:
+            logging.error(f"Failed to read position for Motor {motor_number}: {e}")
+            raise
+
+    def device_state(self, motor_num=0):
         logging.debug("Checking device and connection states, including Modbus RTU network status")
         res = {"motor1": {}, "motor2": {}}
 

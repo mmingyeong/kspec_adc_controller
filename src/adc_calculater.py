@@ -26,7 +26,7 @@ class adc_calculater:
     def __init__(self):
         pass
 
-    def zenith_distance(self, alt):
+    def zen_dist(self, alt, azim):
         """
         Calculate the zenith distance given the altitude.
 
@@ -37,7 +37,10 @@ class adc_calculater:
         float: Zenith distance in degrees
         """
         return 90 - alt
-    
+
+    def interpolation():
+        pass
+
     def return_ang(self, z_dist:float):
         # input: z_dist
         # calculation...
