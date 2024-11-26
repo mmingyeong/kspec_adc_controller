@@ -10,8 +10,6 @@ import time
 import logging
 import asyncio
 from nanotec_nanolib import Nanolib
-from pymodbus.client import ModbusSerialClient
-
 __all__ = ["adc_controller"]
 
 logging.basicConfig(
@@ -31,6 +29,10 @@ class adc_controller:
         logging.debug("Initializing adc_controller")
         
     def find_devices(self):
+        logging.info("Starting the process to find devices...")
+        
+        # Listing available bus hardware
+        logging.info("Calling listAvailableBusHardware()...")
         listAvailableBus = self.nanolib_accessor.listAvailableBusHardware()
         if listAvailableBus.hasError():
             error_message = 'Error: listAvailableBusHardware() - ' + listAvailableBus.getError()
@@ -38,14 +40,25 @@ class adc_controller:
             raise Exception(error_message)
 
         bus_hardware_ids = listAvailableBus.getResult()
+        logging.info(f"Number of available bus hardware IDs: {bus_hardware_ids.size()}")
         logging.info("Available Bus Hardware IDs:")
         for i in range(bus_hardware_ids.size()):
             bus_id = bus_hardware_ids[i]
             logging.info(f"ID {i}: {bus_id.toString() if hasattr(bus_id, 'toString') else str(bus_id)}")
 
-        ind = 2  # 초기 설정에 확인해야 할 파라미터
-        self.adc_motor_id = bus_hardware_ids[ind]
-        
+        # Selecting a bus hardware ID
+        ind = 0  # Index for initial setup; verify correctness
+        logging.info(f"Selecting bus hardware ID at index {ind}.")
+        try:
+            self.adc_motor_id = bus_hardware_ids[ind]
+            logging.info(f"Selected bus hardware ID: {self.adc_motor_id}")
+        except IndexError as e:
+            error_message = f"IndexError: Unable to select bus hardware ID at index {ind}."
+            logging.error(error_message)
+            raise Exception(error_message) from e
+
+        # Setting up options
+        logging.info("Configuring ADC motor options...")
         self.adc_motor_options = Nanolib.BusHardwareOptions()
         self.adc_motor_options.addOption(
             Nanolib.Serial().BAUD_RATE_OPTIONS_NAME,
@@ -55,13 +68,19 @@ class adc_controller:
             Nanolib.Serial().PARITY_OPTIONS_NAME,
             Nanolib.SerialParity().EVEN
         )
-        
+        logging.info("ADC motor options configured successfully.")
+
+        # Opening bus hardware
+        logging.info("Opening bus hardware with protocol...")
         open_bus = self.nanolib_accessor.openBusHardwareWithProtocol(self.adc_motor_id, self.adc_motor_options)
         if open_bus.hasError():
             error_message = 'Error: openBusHardwareWithProtocol() - ' + open_bus.getError()
             logging.error(error_message)
             raise Exception(error_message)
-        
+        logging.info("Bus hardware opened successfully.")
+
+        # Scanning devices on the bus
+        logging.info("Scanning for devices on the bus...")
         scan_devices = self.nanolib_accessor.scanDevices(self.adc_motor_id, callbackScanBus)
         if scan_devices.hasError():
             error_message = 'Error: scanDevices() - ' + scan_devices.getError()
@@ -69,24 +88,36 @@ class adc_controller:
             raise Exception(error_message)
 
         self.device_ids = scan_devices.getResult()
+        logging.info(f"Number of devices found: {self.device_ids.size()}")
         logging.info("Device IDs found:")
         for i in range(self.device_ids.size()):
             logging.info(f"ID {i}: {self.device_ids[i]}")
 
-        if not self.device_ids:
+        if not self.device_ids.size():
             error_message = "No devices found during scan."
             logging.error(error_message)
             raise Exception(error_message)
 
+        # Adding devices
+        logging.info("Adding devices to the system...")
         self.handles = []
-        self.device_handle_1 = self.nanolib_accessor.addDevice(self.device_ids[0]).getResult()
-        self.device_handle_2 = self.nanolib_accessor.addDevice(self.device_ids[1]).getResult()
-        logging.info(self.device_handle_1)
-        logging.info(self.device_handle_2)
-        self.handles.append(self.device_handle_1)
-        self.handles.append(self.device_handle_2)
-        self.device_1_connected = False  # Attribute to track device 1 connection status
-        self.device_2_connected = False  # Attribute to track device 2 connection status
+        try:
+            self.device_handle_1 = self.nanolib_accessor.addDevice(self.device_ids[0]).getResult()
+            logging.info(f"Device 1 added successfully with handle: {self.device_handle_1}")
+            self.device_handle_2 = self.nanolib_accessor.addDevice(self.device_ids[1]).getResult()
+            logging.info(f"Device 2 added successfully with handle: {self.device_handle_2}")
+            self.handles.append(self.device_handle_1)
+            self.handles.append(self.device_handle_2)
+        except IndexError as e:
+            error_message = "IndexError: Not enough devices found to add to the system."
+            logging.error(error_message)
+            raise Exception(error_message) from e
+
+        # Initializing connection status
+        logging.info("Initializing device connection statuses...")
+        self.device_1_connected = False
+        self.device_2_connected = False
+        logging.info("Device connection statuses initialized. Process completed successfully.")
 
     def connect(self, motor_number=0):
         logging.debug("Connecting devices")
@@ -215,7 +246,7 @@ class adc_controller:
             logging.error(error_message)
             raise Exception(error_message)
 
-    def homing(self):
+    async def homing(self):
         """
         Move both motors to their home position (Position actual value = 0).
 
@@ -259,20 +290,41 @@ class adc_controller:
                 logging.info("Motor 2 is already at the home position. Only Motor 1 will be moved.")
 
             start_time = time.time()  # Record the start time
+            
+            async def move_motor_async(MotorNum, pos):
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(None, self.move_motor, MotorNum, pos)
 
-            # Move Motor 1 to home position if not already there
+            # Define async tasks for moving motors
+            max_position = 4_294_967_296  
+
+            # Motor 1 target position calculation
             if current_abs_pos_1 != 0:
-                target_pos = -current_abs_pos_1
+                if current_abs_pos_1 < 1_000_000:
+                    target_pos_1 = -current_abs_pos_1
+                else:
+                    target_pos_1 = max_position - current_abs_pos_1
+                logging.info(f"Motor 1 target position calculated as: {target_pos_1}")
                 logging.info("Moving Motor 1 to home position (0)...")
-                move_result = self.move_motor(1, target_pos)  # Use move_motor to move Motor 1 to position 0
-                logging.info(f"Motor 1 move result: {move_result}")
+                motor1_task = move_motor_async(1, target_pos_1)
+                logging.info(f"Motor 1 move result: {motor1_task}")
 
-            # Move Motor 2 to home position if not already there
+            # Motor 2 target position calculation
             if current_abs_pos_2 != 0:
-                target_pos = -current_abs_pos_2
+                if current_abs_pos_2 < 1_000_000:
+                    target_pos_2 = -current_abs_pos_2
+                else:
+                    target_pos_2 = max_position - current_abs_pos_2
+                logging.info(f"Motor 2 target position calculated as: {target_pos_2}")
                 logging.info("Moving Motor 2 to home position (0)...")
-                move_result = self.move_motor(2, target_pos)  # Use move_motor to move Motor 2 to position 0
-                logging.info(f"Motor 2 move result: {move_result}")
+                motor2_task = move_motor_async(2, target_pos_2)  # Use move_motor to move Motor 2 to position 0
+                logging.info(f"Motor 2 move result: {motor2_task}")
+
+            results = await asyncio.gather(motor1_task, motor2_task)
+            
+             # Log results for each motor
+            for motor_id, result in enumerate(results, start=1):
+                logging.info(f"Motor {motor_id} move result: {result}")
 
             execution_time = time.time() - start_time
             logging.info(f"Homing process completed in {execution_time:.2f} seconds")

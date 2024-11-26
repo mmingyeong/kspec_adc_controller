@@ -213,7 +213,7 @@ class adc_actions:
 
         return json.dumps(response)
 
-    def homing(self):
+    async def homing(self):
         """
         Perform homing operation with specified parameters.
 
@@ -225,7 +225,7 @@ class adc_actions:
         logging.info("Starting homing operation.")
         response = {}
         try:
-            state = self.controller.homing()
+            state = await self.controller.homing()
             response = {
                 "status": "success",
                 "message": "Homing completed.",
