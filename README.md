@@ -9,7 +9,6 @@ The `kspec_adc_controller` is a Python-based application designed to interface w
 The K-SPEC ADC corrects for atmospheric dispersion during astronomical observations. By controlling two prism motors, the ADC performs variable counter-dispersion to compensate for dispersion caused by observing at different zenith angles (Wehbe et al., 2019).
 
 ### Key Functions
-- **`Homing()`**: Calibrates the ADC to its default position, ensuring accurate motor alignment.
 - **`Activate()`**: Engages the ADC system, allowing dynamic adjustments during observations.
 
 ## Installation
@@ -34,16 +33,13 @@ pip install -r requirements.txt
 Here is a basic example of using the Actions class for controlling the ADC:
 
 ```python
-from kspec_adc_controller import Actions
+from kspec_adc_controller import AdcActions
 
 # Initialize the Actions class
-actions = Actions()
-
-# Perform homing to calibrate the motors
-actions.Homing()
+actions = AdcActions()
 
 # Activate the ADC for dispersion correction
-actions.Activate()
+actions.activate()
 ```
 
 ## References
