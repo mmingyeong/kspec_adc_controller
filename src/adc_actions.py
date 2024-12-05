@@ -6,38 +6,142 @@
 # @Filename: adc_actions.py
 
 import asyncio
-import json
-import logging
-from adc_controller import adc_controller
+from adc_controller import AdcController
+from adc_logger import AdcLogger
 
-__all__ = ["adc_actions"]
+__all__ = ["AdcActions"]
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s %(levelname)s: %(message)s',
-    handlers=[
-        logging.FileHandler("log/adc_action.log", encoding='utf-8', errors='ignore'),
-        logging.StreamHandler()
-    ]
-)
-
-class adc_actions:
+class AdcActions:
     """Class to manage ADC actions including connecting, powering on/off, and motor control."""
 
-    def __init__(self):
-        """Initialize the adc_actions class and set up the ADC controller."""
-        logging.debug("Initializing adc_actions class.")
-        self.controller = adc_controller()
-
-    def poweron(self):
+    def __init__(self, logger=None):
         """
+        Initialize the AdcActions class and set up the ADC controller.
+        
+        Parameters
+        ----------
+        logger : AdcLogger, optional
+            Logger instance for logging operations. If None, a default AdcLogger instance is created.
+        """
+        self.logger = logger or AdcLogger(__file__)  # Use provided logger or create a default one
+        self.logger.debug("Initializing AdcActions class.")
+        self.controller = AdcController(self.logger)
+        self.controller.find_devices()
+
+    def _generate_response(self, status: str, message: str, **kwargs) -> dict:
+        """
+        Generate a response dictionary.
+
+        Parameters
+        ----------
+        status : str
+            Status of the operation ('success' or 'error').
+        message : str
+            Message describing the operation result.
+        **kwargs : dict
+            Additional data to include in the response.
+
+        Returns
+        -------
+        dict
+            A dictionary representing the response.
+        """
+        response = {"status": status, "message": message}
+        response.update(kwargs)
+        return response
+
+    def status(self, motor_num: int = 0) -> dict:
+        """
+        Get the status of a specified motor.
+
+        Parameters
+        ----------
+        motor_num : int, optional
+            The motor number to check. Default is 0.
+
+        Returns
+        -------
+        dict
+            A dictionary indicating the status or any error encountered.
+        """
+        self.logger.info(f"Retrieving status for motor {motor_num}.")
+        try:
+            state = self.controller.device_state(motor_num)
+            self.logger.info(f"Motor {motor_num} status: {state}")
+            return self._generate_response("success", f"Motor {motor_num} status retrieved.", DeviceState=state)
+        except Exception as e:
+            self.logger.error(f"Error in status: {e}")
+            return self._generate_response("error", str(e), motor_num=motor_num)
+
+    async def activate(self, pos: int, vel1: int = 5, vel2: int = 5) -> dict:
+        """
+        Activate both motors simultaneously with specified velocities.
+
+        Parameters
+        ----------
+        pos : int
+            Target position for the motors.
+        vel1 : int, optional
+            Target velocity for motor 1. Default is 5.
+        vel2 : int, optional
+            Target velocity for motor 2. Default is 5.
+
+        Returns
+        -------
+        dict
+            A dictionary indicating the success or failure of the activation.
+        """
+        self.logger.info("Activating motors.")
+        try:
+            self.controller.connect()
+
+            async def move_motor_async(motor_num, position, velocity):
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(None, self.controller.move_motor, motor_num, position, velocity)
+
+            motor1_task = move_motor_async(1, pos, vel1)
+            motor2_task = move_motor_async(2, pos, vel2)
+
+            results = await asyncio.gather(motor1_task, motor2_task)
+
+            self.logger.info("Motors activated successfully.")
+            return self._generate_response(
+                "success", "Motors activated successfully.", motor_1=results[0], motor_2=results[1]
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to activate motors: {e}")
+            return self._generate_response("error", str(e))
+
+    def power_off(self) -> dict:
+        """
+        Power off and disconnect from all devices.
+
+        Returns
+        -------
+        dict
+            A dictionary indicating the success or failure of the operation.
+        """
+        self.logger.info("Powering off and disconnecting from devices.")
+        try:
+            self.controller.disconnect()
+            self.controller.close()
+            self.logger.info("Power off successful.")
+            return self._generate_response("success", "Power off and devices disconnected.")
+        except Exception as e:
+            self.logger.error(f"Error in power off: {e}")
+            return self._generate_response("error", str(e))
+
+
+"""""""""
+    def poweron(self):
+        """"""
         Power on and connect to all devices.
 
         Returns:
         -------
         str
             A JSON string indicating the success or failure of the operation.
-        """
+        """"""
         logging.info("Powering on and connecting to devices.")
         response = {}
         try:
@@ -57,14 +161,14 @@ class adc_actions:
         return json.dumps(response)
 
     def poweroff(self):
-        """
+        """"""
         Power off and disconnect from all devices.
 
         Returns:
         -------
         str
             A JSON string indicating the success or failure of the operation.
-        """
+        """"""
         logging.info("Powering off and disconnecting from devices.")
         response = {}
         try:
@@ -84,14 +188,14 @@ class adc_actions:
         return json.dumps(response)
 
     def connect(self):
-        """
+        """"""
         Connect to the ADC controller.
 
         Returns:
         -------
         str
             A JSON string indicating the success or failure of the operation.
-        """
+        """"""
         logging.info("Connecting to devices.")
         response = {}
         try:
@@ -110,14 +214,14 @@ class adc_actions:
         return json.dumps(response)
 
     def disconnect(self):
-        """
+        """"""
         Disconnect from the ADC controller.
 
         Returns:
         -------
         str
             A JSON string indicating the success or failure of the operation.
-        """
+        """"""
         logging.info("Disconnecting from devices.")
         response = {}
         try:
@@ -136,7 +240,7 @@ class adc_actions:
         return json.dumps(response)
 
     def status(self, motor_num=0):
-        """
+        """"""
         Get the status of a specified motor.
 
         Parameters:
@@ -148,7 +252,7 @@ class adc_actions:
         -------
         str
             A JSON string indicating the status or any error encountered.
-        """
+        """"""
         logging.info(f"Retrieving status for motor {motor_num}.")
         response = {}
         try:
@@ -169,21 +273,21 @@ class adc_actions:
         return json.dumps(response)
 
     async def activate(self, pos:int, vel1=5, vel2=5):
-        """
-        Activate both motors simultaneously with specified velocities.
+        """"""
+        #Activate both motors simultaneously with specified velocities.
 
-        Parameters:
-        ----------
-        vel1 : int, optional
-            The target velocity for motor 1. Default is 5.
-        vel2 : int, optional
-            The target velocity for motor 2. Default is 5.
+        #Parameters:
+        #----------
+        #vel1 : int, optional
+        #    The target velocity for motor 1. Default is 5.
+        #vel2 : int, optional
+        #    The target velocity for motor 2. Default is 5.
 
-        Returns:
-        -------
-        str
-            A JSON string indicating the success or failure of the activation.
-        """
+        #Returns:
+        #-------
+        #str
+        #    A JSON string indicating the success or failure of the activation.
+        """"""
         logging.info("Activating motors.")
         response = {}
 
@@ -214,14 +318,14 @@ class adc_actions:
         return json.dumps(response)
 
     async def homing(self):
-        """
-        Perform homing operation with specified parameters.
+        """"""
+        #Perform homing operation with specified parameters.
 
-        Returns:
-        -------
-        str
-            A JSON string indicating the success or failure of the operation.
-        """
+        #Returns:
+        #-------
+        #str
+        #    A JSON string indicating the success or failure of the operation.
+        """"""
         logging.info("Starting homing operation.")
         response = {}
         try:
@@ -238,3 +342,4 @@ class adc_actions:
                 "message": str(e),
             }
         return json.dumps(response)
+"""""""""

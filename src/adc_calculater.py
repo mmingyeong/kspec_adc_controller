@@ -5,11 +5,8 @@
 # @Date: 2024-11-13
 # @Filename: adc_calculater.py
 
-import os
-import time
 import logging
 
-import math
 
 __all__ = ["adc_calculater"]
 

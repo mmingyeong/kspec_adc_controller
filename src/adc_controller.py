@@ -6,546 +6,452 @@
 # @Filename: adc_controller.py
 
 import os
+import json
 import time
-import logging
 import asyncio
 from nanotec_nanolib import Nanolib
-__all__ = ["adc_controller"]
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s %(levelname)s: %(message)s',
-    handlers=[
-        logging.FileHandler("log/adc_controller.log", encoding='utf-8', errors='ignore'),
-        logging.StreamHandler()
-    ]
-)
+__all__ = ["AdcController"]
 
-class adc_controller:
-    """Talk to an KSPEC ADC system over Serial Port."""
+class AdcController:
+    """
+    Interacts with a KSPEC ADC system over a serial port.
 
-    def __init__(self):
-        self.nanolib_accessor: Nanolib.NanoLibAccessor = Nanolib.getNanoLibAccessor()
-        logging.debug("Initializing adc_controller")
-        
+    Attributes
+    ----------
+    CONFIG_FILE : str
+        Path to the JSON configuration file.
+    logger : logging.Logger
+        Logger instance for logging messages.
+    nanolib_accessor : Nanolib.NanoLibAccessor
+        Instance for accessing the Nanolib API.
+    devices : dict
+        Dictionary for managing device handles and connection states.
+    selected_bus_index : int
+        Index of the selected bus hardware.
+    """
+
+    CONFIG_FILE = "adc_config.json"
+
+    def __init__(self, logger):
+        """
+        Initializes the AdcController.
+
+        Parameters
+        ----------
+        logger : logging.Logger
+            Logger instance for debugging and informational logs.
+        """
+        self.logger = logger
+        self.nanolib_accessor = Nanolib.getNanoLibAccessor()
+        self.logger.debug("Initializing AdcController")
+        self.devices = {
+            1: {"handle": None, "connected": False},
+            2: {"handle": None, "connected": False},
+        }
+        self.selected_bus_index = self._load_selected_bus_index()
+
+    def _load_selected_bus_index(self) -> int:
+        """
+        Loads the selected bus index from a JSON configuration file.
+
+        Returns
+        -------
+        int
+            The selected bus index from the configuration file.
+            Defaults to 1 if the file does not exist or is invalid.
+
+        Notes
+        -----
+        If the configuration file is missing or cannot be read, a warning is logged, 
+        and the default value is used.
+        """
+        default_index = 1
+        if os.path.exists(self.CONFIG_FILE):
+            try:
+                with open(self.CONFIG_FILE, "r") as file:
+                    config = json.load(file)
+                    return config.get("selected_bus_index", default_index)
+            except (json.JSONDecodeError, IOError) as e:
+                self.logger.error(f"Error reading configuration file: {e}")
+        else:
+            self.logger.warning(f"Configuration file {self.CONFIG_FILE} not found. Using default index {default_index}.")
+        return default_index
+
     def find_devices(self):
-        logging.info("Starting the process to find devices...")
-        
-        # Listing available bus hardware
-        logging.info("Calling listAvailableBusHardware()...")
-        listAvailableBus = self.nanolib_accessor.listAvailableBusHardware()
-        if listAvailableBus.hasError():
-            error_message = 'Error: listAvailableBusHardware() - ' + listAvailableBus.getError()
-            logging.error(error_message)
-            raise Exception(error_message)
+        """
+        Finds devices connected to the selected bus and initializes them.
 
-        bus_hardware_ids = listAvailableBus.getResult()
-        logging.info(f"Number of available bus hardware IDs: {bus_hardware_ids.size()}")
-        logging.info("Available Bus Hardware IDs:")
-        for i in range(bus_hardware_ids.size()):
-            bus_id = bus_hardware_ids[i]
-            logging.info(f"ID {i}: {bus_id.toString() if hasattr(bus_id, 'toString') else str(bus_id)}")
+        Raises
+        ------
+        Exception
+            If no bus hardware IDs are found or if there is an error during initialization.
+        """
+        self.logger.info("Starting the process to find devices...")
+        list_available_bus = self.nanolib_accessor.listAvailableBusHardware()
+        if list_available_bus.hasError():
+            raise Exception(f"Error: listAvailableBusHardware() - {list_available_bus.getError()}")
 
-        # Selecting a bus hardware ID
-        ind = 0  # Index for initial setup; verify correctness
-        logging.info(f"Selecting bus hardware ID at index {ind}.")
-        try:
-            self.adc_motor_id = bus_hardware_ids[ind]
-            logging.info(f"Selected bus hardware ID: {self.adc_motor_id}")
-        except IndexError as e:
-            error_message = f"IndexError: Unable to select bus hardware ID at index {ind}."
-            logging.error(error_message)
-            raise Exception(error_message) from e
+        bus_hardware_ids = list_available_bus.getResult()
+        if not bus_hardware_ids.size():
+            raise Exception("No bus hardware IDs found.")
 
-        # Setting up options
-        logging.info("Configuring ADC motor options...")
+        for i, bus_id in enumerate(bus_hardware_ids):
+            self.logger.info(f"ID {i}: {bus_id.toString() if hasattr(bus_id, 'toString') else str(bus_id)}")
+
+        ind = self.selected_bus_index
+        self.adc_motor_id = bus_hardware_ids[ind]
+        self.logger.info(f"Selected bus hardware ID: {self.adc_motor_id}")
+
+        # Configure options
         self.adc_motor_options = Nanolib.BusHardwareOptions()
         self.adc_motor_options.addOption(
-            Nanolib.Serial().BAUD_RATE_OPTIONS_NAME,
-            Nanolib.SerialBaudRate().BAUD_RATE_115200
+            Nanolib.Serial().BAUD_RATE_OPTIONS_NAME, Nanolib.SerialBaudRate().BAUD_RATE_115200
         )
         self.adc_motor_options.addOption(
-            Nanolib.Serial().PARITY_OPTIONS_NAME,
-            Nanolib.SerialParity().EVEN
+            Nanolib.Serial().PARITY_OPTIONS_NAME, Nanolib.SerialParity().EVEN
         )
-        logging.info("ADC motor options configured successfully.")
 
-        # Opening bus hardware
-        logging.info("Opening bus hardware with protocol...")
+        # Open bus hardware
         open_bus = self.nanolib_accessor.openBusHardwareWithProtocol(self.adc_motor_id, self.adc_motor_options)
         if open_bus.hasError():
-            error_message = 'Error: openBusHardwareWithProtocol() - ' + open_bus.getError()
-            logging.error(error_message)
-            raise Exception(error_message)
-        logging.info("Bus hardware opened successfully.")
+            raise Exception(f"Error: openBusHardwareWithProtocol() - {open_bus.getError()}")
 
-        # Scanning devices on the bus
-        logging.info("Scanning for devices on the bus...")
+        # Scan devices
         scan_devices = self.nanolib_accessor.scanDevices(self.adc_motor_id, callbackScanBus)
         if scan_devices.hasError():
-            error_message = 'Error: scanDevices() - ' + scan_devices.getError()
-            logging.error(error_message)
-            raise Exception(error_message)
+            raise Exception(f"Error: scanDevices() - {scan_devices.getError()}")
 
         self.device_ids = scan_devices.getResult()
-        logging.info(f"Number of devices found: {self.device_ids.size()}")
-        logging.info("Device IDs found:")
-        for i in range(self.device_ids.size()):
-            logging.info(f"ID {i}: {self.device_ids[i]}")
-
         if not self.device_ids.size():
-            error_message = "No devices found during scan."
-            logging.error(error_message)
-            raise Exception(error_message)
+            raise Exception("No devices found during scan.")
 
-        # Adding devices
-        logging.info("Adding devices to the system...")
-        self.handles = []
-        try:
-            self.device_handle_1 = self.nanolib_accessor.addDevice(self.device_ids[0]).getResult()
-            logging.info(f"Device 1 added successfully with handle: {self.device_handle_1}")
-            self.device_handle_2 = self.nanolib_accessor.addDevice(self.device_ids[1]).getResult()
-            logging.info(f"Device 2 added successfully with handle: {self.device_handle_2}")
-            self.handles.append(self.device_handle_1)
-            self.handles.append(self.device_handle_2)
-        except IndexError as e:
-            error_message = "IndexError: Not enough devices found to add to the system."
-            logging.error(error_message)
-            raise Exception(error_message) from e
-
-        # Initializing connection status
-        logging.info("Initializing device connection statuses...")
-        self.device_1_connected = False
-        self.device_2_connected = False
-        logging.info("Device connection statuses initialized. Process completed successfully.")
+        for i, device_id in enumerate(self.device_ids):
+            if i + 1 in self.devices:
+                handle_result = self.nanolib_accessor.addDevice(device_id)
+                if handle_result.hasError():
+                    raise Exception(f"Error adding device {i + 1}: {handle_result.getError()}")
+                self.devices[i + 1]["handle"] = handle_result.getResult()
+                self.logger.info(f"Device {i + 1} added successfully.")
 
     def connect(self, motor_number=0):
-        logging.debug("Connecting devices")
-        try:
-            if motor_number not in [0, 1, 2]:
-                raise ValueError("Invalid motor number. Must be 0, 1, or 2.")
+        """
+        Connects the specified motor or all motors to the bus.
 
-            if motor_number == 1:
-                # Connect only device 1
-                if self.device_1_connected:
-                    logging.info("Device 1 is already connected.")
-                else:
-                    res1 = self.nanolib_accessor.connectDevice(self.device_handle_1)
-                    if res1.hasError():
-                        error_message = 'Error: connectDevice() - ' + res1.getError()
-                        logging.error(error_message)
-                        raise Exception(error_message)
-                    self.device_1_connected = True
-                    logging.info("Device 1 connected successfully.")
-            elif motor_number == 2:
-                # Connect only device 2
-                if self.device_2_connected:
-                    logging.info("Device 2 is already connected.")
-                else:
-                    res2 = self.nanolib_accessor.connectDevice(self.device_handle_2)
-                    if res2.hasError():
-                        error_message = 'Error: connectDevice() - ' + res2.getError()
-                        logging.error(error_message)
-                        raise Exception(error_message)
-                    self.device_2_connected = True
-                    logging.info("Device 2 connected successfully.")
-            else:
-                # Connect both devices if motor_number is 0
-                if not self.device_1_connected:
-                    res1 = self.nanolib_accessor.connectDevice(self.device_handle_1)
-                    if res1.hasError():
-                        error_message = 'Error: connectDevice() - ' + res1.getError()
-                        logging.error(error_message)
-                        raise Exception(error_message)
-                    self.device_1_connected = True
-                    logging.info("Device 1 connected successfully.")
-
-                if not self.device_2_connected:
-                    res2 = self.nanolib_accessor.connectDevice(self.device_handle_2)
-                    if res2.hasError():
-                        error_message = 'Error: connectDevice() - ' + res2.getError()
-                        logging.error(error_message)
-                        raise Exception(error_message)
-                    self.device_2_connected = True
-                    logging.info("Device 2 connected successfully.")
-
-        except ValueError as ve:
-            logging.error("ValueError: %s", ve)
-            raise
-        except Exception as e:
-            logging.exception("An error occurred during connect: %s", e)
+        Parameters
+        ----------
+        motor_number : int, optional
+            The motor number to connect (default is 0, which connects all motors).
+        """
+        self._set_connection_state(motor_number, connect=True)
 
     def disconnect(self, motor_number=0):
-        logging.debug("Disconnecting devices")
+        """
+        Disconnects the specified motor or all motors from the bus.
+
+        Parameters
+        ----------
+        motor_number : int, optional
+            The motor number to disconnect (default is 0, which disconnects all motors).
+        """
+        self._set_connection_state(motor_number, connect=False)
+
+    def _set_connection_state(self, motor_number, connect):
+        """
+        Generalized method for connecting or disconnecting devices.
+
+        Parameters
+        ----------
+        motor_number : int
+            The motor number to connect or disconnect.
+        connect : bool
+            True to connect the motor, False to disconnect.
+
+        Raises
+        ------
+        ValueError
+            If the motor number is invalid.
+        Exception
+            If there is an error during connection or disconnection.
+        """
         try:
             if motor_number not in [0, 1, 2]:
                 raise ValueError("Invalid motor number. Must be 0, 1, or 2.")
 
-            if motor_number == 1:
-                # Disconnect only device 1
-                if self.device_1_connected:
-                    res1 = self.nanolib_accessor.disconnectDevice(self.device_handle_1)
-                    if res1.hasError():
-                        error_message = 'Error: disconnectDevice() - ' + res1.getError()
-                        logging.error(error_message)
-                        raise Exception(error_message)
-                    self.device_1_connected = False
-                    logging.info("Device 1 disconnected successfully.")
+            motors = [motor_number] if motor_number != 0 else [1, 2]
+            for motor in motors:
+                device = self.devices[motor]
+                if connect:
+                    if device["connected"]:
+                        self.logger.info(f"Device {motor} is already connected.")
+                    else:
+                        result = self.nanolib_accessor.connectDevice(device["handle"])
+                        if result.hasError():
+                            raise Exception(f"Error: connectDevice() - {result.getError()}")
+                        device["connected"] = True
+                        self.logger.info(f"Device {motor} connected successfully.")
                 else:
-                    logging.info("Device 1 was not connected.")
-            elif motor_number == 2:
-                # Disconnect only device 2
-                if self.device_2_connected:
-                    res2 = self.nanolib_accessor.disconnectDevice(self.device_handle_2)
-                    if res2.hasError():
-                        error_message = 'Error: disconnectDevice() - ' + res2.getError()
-                        logging.error(error_message)
-                        raise Exception(error_message)
-                    self.device_2_connected = False
-                    logging.info("Device 2 disconnected successfully.")
-                else:
-                    logging.info("Device 2 was not connected.")
-            else:
-                # Disconnect both devices if motor_number is 0
-                if self.device_1_connected:
-                    res1 = self.nanolib_accessor.disconnectDevice(self.device_handle_1)
-                    if res1.hasError():
-                        error_message = 'Error: disconnectDevice() - ' + res1.getError()
-                        logging.error(error_message)
-                        raise Exception(error_message)
-                    self.device_1_connected = False
-                    logging.info("Device 1 disconnected successfully.")
-                else:
-                    logging.info("Device 1 was not connected.")
+                    if device["connected"]:
+                        result = self.nanolib_accessor.disconnectDevice(device["handle"])
+                        if result.hasError():
+                            raise Exception(f"Error: disconnectDevice() - {result.getError()}")
+                        device["connected"] = False
+                        self.logger.info(f"Device {motor} disconnected successfully.")
+                    else:
+                        self.logger.info(f"Device {motor} was not connected.")
 
-                if self.device_2_connected:
-                    res2 = self.nanolib_accessor.disconnectDevice(self.device_handle_2)
-                    if res2.hasError():
-                        error_message = 'Error: disconnectDevice() - ' + res2.getError()
-                        logging.error(error_message)
-                        raise Exception(error_message)
-                    self.device_2_connected = False
-                    logging.info("Device 2 disconnected successfully.")
-                else:
-                    logging.info("Device 2 was not connected.")
-
-        except ValueError as ve:
-            logging.error("ValueError: %s", ve)
-            raise
         except Exception as e:
-            logging.exception("An error occurred during disconnect: %s", e)
+            self.logger.exception(f"An error occurred while {'connecting' if connect else 'disconnecting'}: {e}")
+            raise
 
-            
     def close(self):
-        logging.debug("close all")
+        """
+        Closes the bus hardware connection.
 
+        Raises
+        ------
+        Exception
+            If there is an error during closing the bus hardware.
+        """
+        self.logger.debug("Closing all devices...")
         close_result = self.nanolib_accessor.closeBusHardware(self.adc_motor_id)
-        
         if close_result.hasError():
-            error_message = 'Error: closeBusHardware() - ' + close_result.getError()
-            logging.error(error_message)
-            raise Exception(error_message)
+            raise Exception(f"Error: closeBusHardware() - {close_result.getError()}")
+        self.logger.info("Bus hardware closed successfully.")
+
 
     async def homing(self):
         """
         Move both motors to their home position (Position actual value = 0).
 
-        This function checks if motor 1 and motor 2 are already at their home positions.
-        If not, it uses the `move_motor` method to move them to Position actual value = 0.
-        If they are already at home, it logs a message indicating that no movement is needed.
+        This method checks the connection state of each motor and moves them to 
+        the home position concurrently if they are not already in position. 
+        It logs the process and measures the execution time.
 
-        Raises:
+        Returns
+        -------
+        None
+            If all motors are successfully moved to the home position or 
+            already at the home position.
+
+        Raises
         ------
         Exception
-            If an error occurs during the homing process, an exception is raised
-            with an appropriate error message.
+            If any motor is not connected or if there is an error during 
+            the homing process.
         """
-        logging.debug("Starting the homing process for both motors...")
+        self.logger.debug("Starting the homing process for both motors...")
+        start_time = time.time()
 
         try:
-            # Check if both motors are connected
-            if not self.device_1_connected or not self.device_2_connected:
-                raise Exception("Error: Both motors must be connected before performing homing.")
-            logging.info("Both motors are confirmed to be connected.")
+            # Check if all required devices are connected
+            for motor_id, device in self.devices.items():
+                if not device["connected"]:
+                    raise Exception(f"Error: Motor {motor_id} is not connected. Please connect it before homing.")
 
-            # Read the current positions of both motors
-            device_handle_1 = self.device_handle_1
-            device_handle_2 = self.device_handle_2
+            tasks = []
+            max_position = 4_294_967_296
 
-            logging.debug("Reading the initial position of Motor 1...")
-            current_abs_pos_1 = self.nanolib_accessor.readNumber(device_handle_1, Nanolib.OdIndex(0x6064, 0x00)).getResult()
-            logging.info(f"Motor 1 initial position read as: {current_abs_pos_1}")
+            for motor_id, device in self.devices.items():
+                current_pos = self.read_motor_position(motor_id)
+                if current_pos != 0:
+                    target_pos = -current_pos if current_pos < 1_000_000 else max_position - current_pos
+                    self.logger.info(f"Motor {motor_id} target position calculated as: {target_pos}")
+                    tasks.append(self.move_motor_async(motor_id, target_pos))
 
-            logging.debug("Reading the initial position of Motor 2...")
-            current_abs_pos_2 = self.nanolib_accessor.readNumber(device_handle_2, Nanolib.OdIndex(0x6064, 0x00)).getResult()
-            logging.info(f"Motor 2 initial position read as: {current_abs_pos_2}")
-
-            # Check if both motors are already at the home position
-            if current_abs_pos_1 == 0 and current_abs_pos_2 == 0:
-                logging.info("Both motors are already at the home position. No movement needed.")
+            if not tasks:
+                self.logger.info("All motors are already at their home position. No movement needed.")
                 return
-            elif current_abs_pos_1 == 0:
-                logging.info("Motor 1 is already at the home position. Only Motor 2 will be moved.")
-            elif current_abs_pos_2 == 0:
-                logging.info("Motor 2 is already at the home position. Only Motor 1 will be moved.")
 
-            start_time = time.time()  # Record the start time
-            
-            async def move_motor_async(MotorNum, pos):
-                loop = asyncio.get_event_loop()
-                return await loop.run_in_executor(None, self.move_motor, MotorNum, pos)
-
-            # Define async tasks for moving motors
-            max_position = 4_294_967_296  
-
-            # Motor 1 target position calculation
-            if current_abs_pos_1 != 0:
-                if current_abs_pos_1 < 1_000_000:
-                    target_pos_1 = -current_abs_pos_1
-                else:
-                    target_pos_1 = max_position - current_abs_pos_1
-                logging.info(f"Motor 1 target position calculated as: {target_pos_1}")
-                logging.info("Moving Motor 1 to home position (0)...")
-                motor1_task = move_motor_async(1, target_pos_1)
-                logging.info(f"Motor 1 move result: {motor1_task}")
-
-            # Motor 2 target position calculation
-            if current_abs_pos_2 != 0:
-                if current_abs_pos_2 < 1_000_000:
-                    target_pos_2 = -current_abs_pos_2
-                else:
-                    target_pos_2 = max_position - current_abs_pos_2
-                logging.info(f"Motor 2 target position calculated as: {target_pos_2}")
-                logging.info("Moving Motor 2 to home position (0)...")
-                motor2_task = move_motor_async(2, target_pos_2)  # Use move_motor to move Motor 2 to position 0
-                logging.info(f"Motor 2 move result: {motor2_task}")
-
-            results = await asyncio.gather(motor1_task, motor2_task)
-            
-             # Log results for each motor
+            # Execute tasks concurrently
+            results = await asyncio.gather(*tasks)
             for motor_id, result in enumerate(results, start=1):
-                logging.info(f"Motor {motor_id} move result: {result}")
+                self.logger.info(f"Motor {motor_id} move result: {result}")
 
             execution_time = time.time() - start_time
-            logging.info(f"Homing process completed in {execution_time:.2f} seconds")
+            self.logger.info(f"Homing process completed in {execution_time:.2f} seconds")
 
         except Exception as e:
-            logging.error(f"Failed to home motors: {e}")
+            self.logger.error(f"Failed to home motors: {e}")
             raise
 
-    def move_motor(self, MotorNum, pos, vel=5):
+
+    def move_motor(self, motor_id, pos, vel=5):
         """
-        Synchronously move the specified motor to a target position at a given velocity in Profile Position mode.
+        Synchronously move the specified motor to a target position 
+        at a given velocity in Profile Position mode.
 
-        Parameters:
+        Parameters
         ----------
-        MotorNum : int
-            The motor number to control. Use `1` for `device_handle_1` and `2` for `device_handle_2`.
+        motor_id : int
+            The identifier of the motor to be moved.
         pos : int
-            The target position for the motor in encoder counts. The range is -16,200 to 16,200 for a full rotation,
-            where positive values move the motor counterclockwise and negative values move it clockwise.
-            Each encoder count corresponds to approximately 0.088 degrees (360 degrees / 16,200 counts).
+            The target position for the motor.
         vel : int, optional
-            The target velocity in RPM for the motor. Default is 10 RPM.
+            The velocity for the movement (default is 5).
 
-        Returns:
+        Returns
         -------
         dict
-            A dictionary containing the initial position, final position, the position change in encoder counts,
-            and the total execution time in seconds.
+            A dictionary containing the initial and final positions, 
+            position change, and execution time of the movement.
 
-        Raises:
+        Raises
         ------
         Exception
-            If an error occurs during motor movement, such as an invalid handle or failure to set
-            control parameters, an exception is raised with an appropriate error message.
+            If the motor is not connected or an error occurs during movement.
         """
-        logging.debug(f"Moving Motor {MotorNum} to position {pos} with velocity {vel}")
+        self.logger.debug(f"Moving Motor {motor_id} to position {pos} with velocity {vel}")
+        device = self.devices.get(motor_id)
 
-        # Check if the motor is connected
-        if MotorNum == 1 and not self.device_1_connected:
-            raise Exception("Error: Motor 1 is not connected. Please connect it before moving.")
-        elif MotorNum == 2 and not self.device_2_connected:
-            raise Exception("Error: Motor 2 is not connected. Please connect it before moving.")
-
-        start_time = time.time()  # Start time recording
-        res = {}  # Initialize result dictionary
+        if not device or not device["connected"]:
+            raise Exception(f"Error: Motor {motor_id} is not connected. Please connect it before moving.")
 
         try:
-            # Set device handle based on MotorNum
-            device_handle = self.device_handle_1 if MotorNum == 1 else self.device_handle_2
-            if not device_handle:
-                raise Exception(f"Device handle for Motor {MotorNum} not found.")
-            
-            # Stop any running NanoJ program
-            # NanoJ Control: 0x2300
-            # 0: false, 1: true
-            self.nanolib_accessor.writeNumber(device_handle, 0, Nanolib.OdIndex(0x2300, 0x00), 32)
+            device_handle = device["handle"]
+            start_time = time.time()
 
             # Set Profile Position mode
-            # Modes of operation
-            # Modes of operation: 0x6060
-            # Modes of operation display: 0x6061
-            res = self.nanolib_accessor.writeNumber(device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
-            operation = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6061, 0x00))
-            logging.info(f"Modes of operation display: {operation.getResult()}")
+            self.nanolib_accessor.writeNumber(device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
 
-            # Set velocity (in rpm)
-            # Profile velocity: 0x6081
-            res = self.nanolib_accessor.writeNumber(device_handle, vel, Nanolib.OdIndex(0x6081, 0x00), 32)
-            logging.info(f"{res}")
+            # Set velocity and target position
+            self.nanolib_accessor.writeNumber(device_handle, vel, Nanolib.OdIndex(0x6081, 0x00), 32)
+            initial_position = self.read_motor_position(motor_id)
+            self.nanolib_accessor.writeNumber(device_handle, pos, Nanolib.OdIndex(0x607A, 0x00), 32)
 
-            # Set target position
-            # Target Position: 0x607A
-            init_pos = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6064, 0x00))
-            initial_position = init_pos.getResult()
-            res = self.nanolib_accessor.writeNumber(device_handle, pos, Nanolib.OdIndex(0x607A, 0x00), 32)
-            logging.info(f"{res}")
-
-            # Enable operation state
+            # Enable and execute movement
             for command in [6, 7, 0xF]:
-                res = self.nanolib_accessor.writeNumber(device_handle, command, Nanolib.OdIndex(0x6040, 0x00), 16)
-                logging.info(f"{res}")
+                self.nanolib_accessor.writeNumber(device_handle, command, Nanolib.OdIndex(0x6040, 0x00), 16)
+            self.nanolib_accessor.writeNumber(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
 
-            # Move motor to target position
-            res = self.nanolib_accessor.writeNumber(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
-            logging.info(f"{res}")
-
-            # Monitor until movement is complete
+            # Wait for movement completion
             while True:
                 status_word = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6041, 0x00))
-                logging.debug(f"Motor {MotorNum} status_word = {status_word.getResult()}")
                 if (status_word.getResult() & 0x1400) == 0x1400:
-                    logging.info(f"Motor {MotorNum} reached target position.")
                     break
-                time.sleep(5)  # Small delay
-            
-            final_pos = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6064, 0x00))
-            final_position = final_pos.getResult() 
-            
-            # Populate result dictionary
-            res = {
+                time.sleep(0.1)
+
+            final_position = self.read_motor_position(motor_id)
+            return {
                 "initial_position": initial_position,
                 "final_position": final_position,
                 "position_change": final_position - initial_position,
-                "execution_time": time.time() - start_time
+                "execution_time": time.time() - start_time,
             }
 
         except Exception as e:
-            logging.error(f"Failed to move Motor {MotorNum}: {e}")
+            self.logger.error(f"Failed to move Motor {motor_id}: {e}")
             raise
-        finally:
-            # Log the execution time and results
-            execution_time = time.time() - start_time
-            logging.info(f"Total execution time for move_motor (Motor {MotorNum}): {execution_time:.2f} seconds")
-            logging.info(res)
 
-        return res
 
-    def read_motor_position(self, motor_number):
+
+    def read_motor_position(self, motor_id: int) -> int:
         """
         Read and return the current position of the specified motor.
 
-        Parameters:
+        Parameters
         ----------
-        motor_number : int
-            The motor number to read from. Use `1` for `device_handle_1` and `2` for `device_handle_2`.
+        motor_id : int
+            The identifier of the motor.
 
-        Returns:
+        Returns
         -------
         int
-            The current position of the motor in encoder counts.
+            The current position of the motor.
 
-        Raises:
+        Raises
         ------
         Exception
-            If the motor is not connected or if an error occurs during the read operation.
+            If the motor is not connected or an error occurs while reading 
+            the position.
         """
-        logging.debug(f"Reading position of Motor {motor_number}")
-
-        # Check if the motor is connected
-        if motor_number == 1 and not self.device_1_connected:
-            raise Exception("Error: Motor 1 is not connected. Please connect it before reading the position.")
-        elif motor_number == 2 and not self.device_2_connected:
-            raise Exception("Error: Motor 2 is not connected. Please connect it before reading the position.")
+        device = self.devices.get(motor_id)
+        if not device or not device["connected"]:
+            raise Exception(f"Error: Motor {motor_id} is not connected. Please connect it before reading the position.")
 
         try:
-            # Select the appropriate device handle
-            device_handle = self.device_handle_1 if motor_number == 1 else self.device_handle_2
-            if not device_handle:
-                raise Exception(f"Device handle for Motor {motor_number} not found.")
-
-            # Read the current position from the motor
-            # Position actual value: 0x6064
+            device_handle = device["handle"]
             position_result = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x6064, 0x00))
             if position_result.hasError():
-                error_message = f"Error: readNumber() - {position_result.getError()}"
-                logging.error(error_message)
-                raise Exception(error_message)
-
-            # Get and return the current position
-            current_position = position_result.getResult()
-            logging.info(f"Motor {motor_number} current position: {current_position}")
-            return current_position
+                raise Exception(f"Error: readNumber() - {position_result.getError()}")
+            return position_result.getResult()
 
         except Exception as e:
-            logging.error(f"Failed to read position for Motor {motor_number}: {e}")
+            self.logger.error(f"Failed to read position for Motor {motor_id}: {e}")
             raise
 
-    def device_state(self, motor_num=0):
-        logging.debug("Checking device and connection states, including Modbus RTU network status")
-        res = {"motor1": {}, "motor2": {}}
 
-        # Check motor status based on motor_num
-        if motor_num == 0 or motor_num == 1:
-            # Check and store the connection state for motor1
-            connection_state1 = self.nanolib_accessor.checkConnectionState(self.device_handle_1).getResult()
-            res["motor1"]["connection_state"] = bool(connection_state1)
+    def device_state(self, motor_id=0):
+        """
+        Retrieve the state of the specified motor or both motors.
 
-            # Get and store the device state for motor1
-            device_state1 = self.nanolib_accessor.getDeviceState(self.device_handle_1).getResult()
-            res["motor1"]["device_state"] = device_state1
+        Parameters
+        ----------
+        motor_id : int, optional
+            The identifier of the motor (default is 0). Use:
+            - 0 to check the state of both motors,
+            - 1 for motor 1,
+            - 2 for motor 2.
 
-            # Get and store additional state for motor1
-            extra_state1 = self.nanolib_accessor.getConnectionState(self.device_handle_1).getResult()
-            res["motor1"]["extra_state"] = bool(extra_state1)
+        Returns
+        -------
+        dict
+            A dictionary containing the connection states of the motors.
 
-        if motor_num == 0 or motor_num == 2:
-            # Check and store the connection state for motor2
-            connection_state2 = self.nanolib_accessor.checkConnectionState(self.device_handle_2).getResult()
-            res["motor2"]["connection_state"] = bool(connection_state2)
-
-            # Get and store the device state for motor2
-            device_state2 = self.nanolib_accessor.getDeviceState(self.device_handle_2).getResult()
-            res["motor2"]["device_state"] = device_state2
-
-            # Get and store additional state for motor2
-            extra_state2 = self.nanolib_accessor.getConnectionState(self.device_handle_2).getResult()
-            res["motor2"]["extra_state"] = bool(extra_state2)
-
-        # If an invalid motor number is provided, raise an error
-        if motor_num not in [0, 1, 2]:
+        Raises
+        ------
+        ValueError
+            If an invalid motor number is provided.
+        """
+        if motor_id not in [0, 1, 2]:
             raise ValueError("Invalid motor number. Use 0 for both motors, 1 for motor 1, or 2 for motor 2.")
 
-        logging.info("Device states: %s", res)
+        res = {}
+        motors = [motor_id] if motor_id in [1, 2] else [1, 2]
+        for motor in motors:
+            device = self.devices.get(motor)
+            if device and device["handle"]:
+                connection_state = self.nanolib_accessor.checkConnectionState(device["handle"]).getResult()
+                res[f"motor{motor}"] = {"connection_state": bool(connection_state)}
+
+        self.logger.info(f"Device states: {res}")
         return res
 
-# ============================================================ #
 
-class ScanBusCallback(Nanolib.NlcScanBusCallback): # override super class
+class ScanBusCallback(Nanolib.NlcScanBusCallback):
+    """
+    Callback class for handling bus scanning progress and results.
+    """
+
     def __init__(self):
         super().__init__()
+
     def callback(self, info, devicesFound, data):
-        if info == Nanolib.BusScanInfo_Start :
+        """
+        Handles scanning events.
+
+        Parameters
+        ----------
+        info : Nanolib.BusScanInfo
+            Information about the current scan state.
+        devicesFound : int
+            The number of devices found during the scan.
+        data : int
+            Additional data relevant to the scan event.
+
+        Returns
+        -------
+        Nanolib.ResultVoid
+            The result indicating the callback execution.
+        """
+        if info == Nanolib.BusScanInfo_Start:
             print('Scan started.')
-        elif info == Nanolib.BusScanInfo_Progress :
-            if (data & 1) == 0 :
+        elif info == Nanolib.BusScanInfo_Progress:
+            if (data & 1) == 0:
                 print('.', end='', flush=True)
-        elif info == Nanolib.BusScanInfo_Finished :
+        elif info == Nanolib.BusScanInfo_Finished:
             print('\nScan finished.')
 
         return Nanolib.ResultVoid()
 
 callbackScanBus = ScanBusCallback() # Nanolib 2021
-
-# ============================================================ #
