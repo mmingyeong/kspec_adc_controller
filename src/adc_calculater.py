@@ -5,19 +5,8 @@
 # @Date: 2024-11-13
 # @Filename: adc_calculater.py
 
-import logging
-
 
 __all__ = ["adc_calculater"]
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s %(levelname)s: %(message)s',
-    handlers=[
-        logging.FileHandler("log/adc_calculater.log", encoding='utf-8', errors='ignore'),
-        logging.StreamHandler()
-    ]
-)
 
 class adc_calculater:
     def __init__(self):
