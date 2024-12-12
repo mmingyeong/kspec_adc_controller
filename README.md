@@ -26,7 +26,7 @@ pip install -r requirements.txt
 - Python 3.6 or higher
 - [Nanotec's NanoLib Python library](https://www.nanotec.com/eu/en/products/9985-nanolib)  
   Ensure that the NanoLib library is installed and properly configured to facilitate communication with the ADC hardware.
-- Compatible hardware: K-SPEC ADC and prism motors.
+- Compatible hardware: K-SPEC ADC and prism motors system.
 
 ## Usage Example
 
@@ -39,7 +39,8 @@ from kspec_adc_controller import AdcActions
 actions = AdcActions()
 
 # Activate the ADC for dispersion correction
-actions.activate()
+zenith_angle = 10
+await actions.activate(zenith_angle)
 ```
 
 ## References
