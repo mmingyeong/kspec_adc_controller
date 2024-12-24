@@ -31,7 +31,33 @@ class AdcActions:
         self.logger.debug("Initializing AdcActions class.")
         self.controller = AdcController(self.logger)
         self.controller.find_devices()
-        self.calculator = ADCCalc(self.logger)
+        self.calculator = ADCCalc(self.logger) # method 변경 line
+
+    def connect(self):
+        """
+        Connect to the ADC controller.
+
+        Returns:
+        -------
+        str
+            A JSON string indicating the success or failure of the operation.
+        """
+        self.logger.info("Connecting to devices.")
+        response = {}
+        try:
+            self.controller.connect()
+            response = {
+                "status": "success",
+                "message": "Connected to devices."
+            }
+            self.logger.info("Connection successful.")
+        except Exception as e:
+            self.logger.error(f"Error in connect: {str(e)}")
+            response = {
+                "status": "error",
+                "message": str(e)
+            }
+        return response
 
     def _generate_response(self, status: str, message: str, **kwargs) -> dict:
         """
@@ -94,14 +120,14 @@ class AdcActions:
         dict
             A dictionary indicating the success or failure of the activation.
         """
-        self.logger.info("Activating motors. za_angle={za_angle}")
-        vel = 5  # deafault
+        self.logger.info(f"Activating motors. za_angle={za}")
+        vel = 1  # deafault
 
         ang = self.calculator.calc_from_za(za)
         pos = self.calculator.degree_to_count(ang)
 
         try:
-            self.controller.connect()
+            #self.controller.connect()
 
             async def move_motor_async(motor_num, position, velocity):
                 loop = asyncio.get_event_loop()

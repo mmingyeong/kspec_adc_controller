@@ -265,7 +265,7 @@ class AdcController:
         """
         self.logger.debug("Starting the homing process for both motors...")
         start_time = time.time()
-        target_velocity = 5
+        target_velocity = 1
 
         async def move_motor_async(motor_num, position, velocity):
             loop = asyncio.get_event_loop()
