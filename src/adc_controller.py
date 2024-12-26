@@ -331,7 +331,7 @@ class AdcController:
         pos : int
             The target position for the motor.
         vel : int, optional
-            The velocity for the movement (default is 5).
+            The velocity for the movement.
 
         Returns
         -------

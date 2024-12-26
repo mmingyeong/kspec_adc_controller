@@ -106,7 +106,86 @@ class AdcActions:
             self.logger.error(f"Error in status: {e}")
             return self._generate_response("error", str(e), motor_num=motor_num)
 
-    async def activate(self, za) -> dict:
+    async def move(self, motor_id, pos_count, vel_set=1):
+        """
+        Move motors to a target position with the specified velocity.
+
+        Parameters
+        ----------
+        motor_id : int
+            The motor ID to move. If `0`, both motors 1 and 2 are moved simultaneously.
+        pos_count : int
+            The target position for the motor(s).
+        vel_set : int, optional
+            The velocity at which to move the motor(s). Defaults to 1.
+
+        Returns
+        -------
+        dict
+            A response dictionary indicating success or failure, along with results.
+        """
+        try:
+            if motor_id == 0:
+                self.logger.debug(
+                    f"Starting simultaneous move for motors 1 and 2 to position {pos_count} with velocity {vel_set}."
+                )
+
+                async def move_motor_async(motor_num, position, velocity):
+                    """
+                    Asynchronously move a single motor using the controller.
+
+                    Parameters
+                    ----------
+                    motor_num : int
+                        The motor ID to move.
+                    position : int
+                        The target position for the motor.
+                    velocity : int
+                        The velocity at which to move the motor.
+
+                    Returns
+                    -------
+                    object
+                        The result of the motor movement operation.
+                    """
+                    loop = asyncio.get_event_loop()
+                    return await loop.run_in_executor(
+                        None, self.controller.move_motor, motor_num, position, velocity
+                    )
+
+                motor1_task = move_motor_async(1, pos_count, vel_set)
+                motor2_task = move_motor_async(2, pos_count, vel_set)
+
+                # Wait for both motors to complete
+                results = await asyncio.gather(motor1_task, motor2_task)
+
+                self.logger.info("Both motors moved successfully.")
+                return {
+                    "status": "success",
+                    "message": "Motors activated successfully.",
+                    "motor_1": results[0],
+                    "motor_2": results[1],
+                }
+            else:
+                self.logger.debug(
+                    f"Moving motor {motor_id} to position {pos_count} with velocity {vel_set}."
+                )
+                result = self.controller.move_motor(motor_id, pos_count, vel_set)
+                self.logger.info(f"Motor {motor_id} moved successfully.")
+                return {
+                    "status": "success",
+                    "message": f"Motor {motor_id} activated successfully.",
+                    "result": result,
+                }
+        except Exception as e:
+            self.logger.error(f"Error moving motor {motor_id}: {e}", exc_info=True)
+            return {
+                "status": "failure",
+                "message": f"Error activating motor {motor_id}.",
+                "error": str(e),
+            }
+
+    async def activate(self, za, vel_set=1) -> dict:
         """
         Activate both motors simultaneously with specified velocities.
 
@@ -121,7 +200,7 @@ class AdcActions:
             A dictionary indicating the success or failure of the activation.
         """
         self.logger.info(f"Activating motors. za_angle={za}")
-        vel = 1  # deafault
+        vel = vel_set  # deafault
 
         ang = self.calculator.calc_from_za(za)
         pos = self.calculator.degree_to_count(ang)
@@ -136,7 +215,7 @@ class AdcActions:
                 )
 
             motor1_task = move_motor_async(1, pos, vel)
-            motor2_task = move_motor_async(2, -pos, vel)
+            motor2_task = move_motor_async(2, pos, vel)
 
             results = await asyncio.gather(motor1_task, motor2_task)
 
@@ -174,6 +253,32 @@ class AdcActions:
             response = {
                 "status": "error",
                 "message": str(e),
+            }
+        return response
+
+    def disconnect(self):
+        """
+        Disconnect from the ADC controller.
+
+        Returns:
+        -------
+        str
+            A JSON string indicating the success or failure of the operation.
+        """
+        self.logger.info("Disconnecting from devices.")
+        response = {}
+        try:
+            self.controller.disconnect()
+            response = {
+                "status": "success",
+                "message": "Disconnected from devices."
+            }
+            self.logger.info("Disconnection successful.")
+        except Exception as e:
+            self.logger.error(f"Error in disconnect: {str(e)}")
+            response = {
+                "status": "error",
+                "message": str(e)
             }
         return response
 
