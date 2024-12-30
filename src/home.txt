@@ -1,0 +1,47 @@
+[5FFCsub16]
+ParameterName=Homing
+ObjectType=0x7
+DataType=0x0005
+AccessType=ro
+DefaultValue=0x00
+PDOMapping=0
+ObjFlags=1
+
+[6098]
+ParameterName=Homing method
+ObjectType=0x7
+DataType=0x0002
+AccessType=rww
+DefaultValue=35
+PDOMapping=1
+
+[6099]
+ParameterName=Homing speed
+ObjectType=0x8
+SubNumber=0x03
+
+[609A]
+ParameterName=Homing acceleration
+ObjectType=0x7
+DataType=0x0007
+AccessType=rww
+DefaultValue=500
+PDOMapping=1
+
+[203A]
+ParameterName=Homing on block configuration
+ObjectType=0x8
+SubNumber=0x03
+
+[607C]
+ParameterName=Home offset
+ObjectType=0x7
+DataType=0x0004
+AccessType=rww
+DefaultValue=0x00000000
+PDOMapping=1
+
+[3243]
+ParameterName=Home switch position capture
+ObjectType=0x8
+SubNumber=0x05

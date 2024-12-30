@@ -441,6 +441,152 @@ class AdcController:
             self.logger.error(f"Failed to read position for Motor {motor_id}: {e}")
             raise
 
+    def read_homing_parameters(self, motor_id: int):
+        try:
+            device = self.devices.get(motor_id)
+            if not device:
+                raise ValueError(f"Motor with ID {motor_id} not found.")
+            
+            device_handle = device["handle"]
+            
+            # Define the indices for different homing parameters
+            indices = [
+                Nanolib.OdIndex(0x6098, 0x00),  # Homing method
+                Nanolib.OdIndex(0x6099, 0x03),  # Homing speed
+                Nanolib.OdIndex(0x203A, 0x03),  # Homing on block configuration
+                Nanolib.OdIndex(0x3243, 0x05),  # Home switch position capture
+                Nanolib.OdIndex(0x607C, 0x00),  # Home offset
+            ]
+            
+            results = {}
+            
+            for idx in indices:
+                position_result = self.nanolib_accessor.readNumber(device_handle, idx)
+                if position_result.hasError():
+                    self.logger.error(f"Failed to read parameter at index {idx}: {position_result.getError()}")
+                    results[str(idx)] = None  # Store None for failed reads
+                else:
+                    results[str(idx)] = position_result.getResult()
+            
+            return results
+        
+        except Exception as e:
+            self.logger.error(f"Failed to read homing parameters for Motor {motor_id}: {e}")
+            raise
+
+
+
+    def configure_homing(self, motor_id: int, config: dict):
+        try:
+            device = self.devices.get(motor_id)
+            if not device:
+                raise ValueError(f"Motor with ID {motor_id} not found.")
+
+            device_handle = device["handle"]
+
+            # Homing method (Index 6098)
+            if "method" in config:
+                result_method = self.nanolib_accessor.writeNumber(
+                    device_handle, Nanolib.OdIndex(0x6098, 0x00), config["method"]
+                )
+                if result_method.hasError():
+                    raise Exception(f"Failed to set Homing Method: {result_method.getError()}")
+
+            # Homing speed (Index 6099)
+            if "speed" in config:
+                for subindex, value in config["speed"].items():
+                    result_speed = self.nanolib_accessor.writeNumber(
+                        device_handle, Nanolib.OdIndex(0x6099, subindex), value
+                    )
+                    if result_speed.hasError():
+                        raise Exception(
+                            f"Failed to set Homing Speed for subindex {subindex}: {result_speed.getError()}"
+                        )
+
+            # Homing on block configuration (Index 203A)
+            if "block_config" in config:
+                for subindex, value in config["block_config"].items():
+                    result_block = self.nanolib_accessor.writeNumber(
+                        device_handle, Nanolib.OdIndex(0x203A, subindex), value
+                    )
+                    if result_block.hasError():
+                        raise Exception(
+                            f"Failed to set Block Configuration for subindex {subindex}: {result_block.getError()}"
+                        )
+
+            # Home switch position capture (Index 3243)
+            if "switch_capture" in config:
+                for subindex, value in config["switch_capture"].items():
+                    result_switch = self.nanolib_accessor.writeNumber(
+                        device_handle, Nanolib.OdIndex(0x3243, subindex), value
+                    )
+                    if result_switch.hasError():
+                        raise Exception(
+                            f"Failed to set Switch Capture for subindex {subindex}: {result_switch.getError()}"
+                        )
+
+            # Home offset (Index 607C)
+            if "offset" in config:
+                result_offset = self.nanolib_accessor.writeNumber(
+                    device_handle, Nanolib.OdIndex(0x607C, 0x00), config["offset"]
+                )
+                if result_offset.hasError():
+                    raise Exception(f"Failed to set Home Offset: {result_offset.getError()}")
+
+            self.logger.info(f"Homing parameters successfully configured for Motor {motor_id}.")
+
+        except Exception as e:
+            self.logger.error(f"Failed to configure homing parameters for Motor {motor_id}: {e}")
+            raise
+
+
+
+    def move_homing(self, motor_id: int, homing_speed: int = 10, homing_method: int = 35):
+        """
+        Move the motor to the home position using the specified homing method and speed.
+
+        Parameters:
+            motor_id (int): ID of the motor to move to the home position.
+            homing_speed (int): Speed at which the motor should move during homing.
+            homing_method (int): Homing method index (e.g., 35 for setting the current position as home).
+
+        Raises:
+            Exception: If the motor fails to reach the home position.
+        """
+        try:
+            device = self.devices.get(motor_id)
+            if not device:
+                raise ValueError(f"Motor with ID {motor_id} not found.")
+
+            device_handle = device["handle"]
+
+            # Set homing method and speed
+            result_method = self.nanolib_accessor.writeNumber(
+                device_handle, Nanolib.OdIndex(0x6098, 0x00), homing_method
+            )
+            if result_method.hasError():
+                raise Exception(f"Failed to set Homing Method: {result_method.getError()}")
+
+            result_speed = self.nanolib_accessor.writeNumber(
+                device_handle, Nanolib.OdIndex(0x6099, 0x01), homing_speed
+            )
+            if result_speed.hasError():
+                raise Exception(f"Failed to set Homing Speed: {result_speed.getError()}")
+
+            # Trigger homing command
+            result_homing = self.nanolib_accessor.executeCommand(
+                device_handle, Nanolib.OdIndex(0x6081, 0x00)  # Execute Homing Command
+            )
+            if result_homing.hasError():
+                raise Exception(f"Failed to execute homing command: {result_homing.getError()}")
+
+            self.logger.info(f"Motor {motor_id} moved to home position successfully.")
+
+        except Exception as e:
+            self.logger.error(f"Failed to move motor {motor_id} to home position: {e}")
+            raise
+
+
     def device_state(self, motor_id=0):
         """
         Retrieve the state of the specified motor or both motors.
