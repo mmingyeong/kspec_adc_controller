@@ -45,3 +45,28 @@ PDOMapping=1
 ParameterName=Home switch position capture
 ObjectType=0x8
 SubNumber=0x05
+
+[6060]
+ParameterName=Modes of operation
+ObjectType=0x7
+DataType=0x0002
+AccessType=rww
+DefaultValue=0x00
+PDOMapping=1
+
+[6040]
+ParameterName=Controlword
+ObjectType=0x7
+DataType=0x0006
+AccessType=rww
+DefaultValue=0x0000
+PDOMapping=1
+
+[6041]
+ParameterName=Statusword
+ObjectType=0x7
+DataType=0x0006
+AccessType=ro
+DefaultValue=
+PDOMapping=1
+ObjFlags=1

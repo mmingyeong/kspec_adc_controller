@@ -230,7 +230,7 @@ class AdcActions:
             self.logger.error(f"Failed to activate motors: {e}")
             return self._generate_response("error", str(e))
 
-    async def homing(self):
+    def homing(self, motor_id):
         """
         Perform homing operation with specified parameters.
 
@@ -242,10 +242,10 @@ class AdcActions:
         self.logger.info("Starting homing operation.")
         response = {}
         try:
-            await self.controller.homing()
+            result = self.controller.homing(motor_id)
             response = {
                 "status": "success",
-                "message": "Homing completed.",
+                "message": result,
             }
             self.logger.info("Homing completed successfully.")
         except Exception as e:
