@@ -51,7 +51,8 @@ class AdcController:
             2: {"handle": None, "connected": False},
         }
         self.selected_bus_index = self._load_selected_bus_index()
-        self.home_position = None
+        self.home_position = False
+        self.max_position = 4_294_967_296
 
     def _load_selected_bus_index(self) -> int:
         """
@@ -382,99 +383,119 @@ class AdcController:
         except Exception as e:
             self.logger.error(f"Motor {motor_id}: Error during stopping.")
             raise e
-
-    def homing(self, motor_id: int):
+        
+    async def homing(self):
         """
-        Perform homing for a specified motor based on sensor value changes.
+        Perform homing for both motors.
+
+        This method ensures that the motors are moved to their designated home positions.
+        If the home positions are already known, it adjusts the current motor positions 
+        to match the home positions.
+
+        Raises
+        ------
+        Exception
+            If an error occurs during the homing process.
+        """
+        try:
+            if not self.home_position:
+                self.logger.info("Initializing homing process for both motors.")
+                await asyncio.gather(
+                    self.find_home_position(1),
+                    self.find_home_position(2)
+                )
+                # Update home positions
+                self.home_position_motor1 = self.read_motor_position(1)
+                self.home_position_motor2 = self.read_motor_position(2)
+                self.home_position = True
+
+                self.logger.info(f"Home positions set: Motor 1: {self.home_position_motor1}, "
+                                 f"Motor 2: {self.home_position_motor2}")
+            else:
+                # Read current motor positions
+                current_pos_1 = self.read_motor_position(1)
+                current_pos_2 = self.read_motor_position(2)
+
+                self.logger.info(f"Current positions: Motor 1: {current_pos_1}, Motor 2: {current_pos_2}")
+                self.logger.info(f"Target home positions: Motor 1: {self.home_position_motor1}, "
+                                 f"Motor 2: {self.home_position_motor2}")
+
+                # Calculate movement offsets
+                target_pos_1 = self.home_position_motor1 - current_pos_1
+                target_pos_2 = self.home_position_motor2 - current_pos_2
+
+                if target_pos_1 == 0 and target_pos_2 == 0:
+                    self.logger.info("Both motors are already at home position.")
+                else:
+                    self.logger.info("Moving motors to home positions...")
+                    await asyncio.gather(
+                        asyncio.to_thread(self.move_motor, 1, target_pos_1, 1),
+                        asyncio.to_thread(self.move_motor, 2, target_pos_2, 1)
+                    )
+                    self.logger.info("Motors moved to home positions successfully.")
+
+            # Final positions
+            final_pos_1 = self.read_motor_position(1)
+            final_pos_2 = self.read_motor_position(2)
+            self.logger.info(f"Homing complete. Final positions: Motor 1: {final_pos_1}, Motor 2: {final_pos_2}")
+
+        except Exception as e:
+            self.logger.error(f"Error during homing process for motors: {e}", exc_info=True)
+            raise
+
+    async def find_home_position(self, motor_id: int, homing_vel=1, sleep_time=0.01):
+        """
+        Find the home position for a specified motor.
 
         Parameters
         ----------
         motor_id : int
-            The ID of the motor to perform homing on.
+            The ID of the motor to find the home position for.
+        homing_vel : int, optional
+            The velocity for the homing operation, by default 1.
+        sleep_time : float, optional
+            The time interval (in seconds) between position checks, by default 0.01.
+
+        Raises
+        ------
+        KeyError
+            If the specified motor ID does not exist.
+        Exception
+            If an error occurs during the homing process.
         """
         device = self.devices.get(motor_id)
-        self.logger.info(f"device: {device}")
         if not device:
             self.logger.error(f"Motor with ID {motor_id} not found.")
-            return
-        
-        self.home_position_motor1 = None
-        self.home_position_motor2 = None
+            raise KeyError(f"Motor with ID {motor_id} not found.")
 
         device_handle = device["handle"]
-        home_position_motor1 = self.home_position_motor1  # home position for motor ID 1
-        home_position_motor2 = self.home_position_motor2  # home position for motor ID 2
-        self.logger.info(f"device_handle: {device_handle}")
-        vel = 5
-
-        initial_raw_value = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x3240, 5)).getResult()
 
         try:
-            if motor_id == 1:
-                home_position = home_position_motor1
-            elif motor_id == 2:
-                home_position = home_position_motor2
-            else:
-                self.logger.error(f"Invalid motor ID {motor_id}.")
-                return
+            initial_raw_value = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x3240, 5)).getResult()
 
-            if home_position is None:
-                self.logger.info("Home position not set. Initializing homing process...")
+            # Configure the motor for homing
+            self.nanolib_accessor.writeNumber(device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8)
+            self.nanolib_accessor.writeNumber(device_handle, homing_vel, Nanolib.OdIndex(0x6081, 0x00), 32)
+            pos = 16200  # Example value for 1 revolution
+            self.nanolib_accessor.writeNumber(device_handle, pos, Nanolib.OdIndex(0x607A, 0x00), 32)
 
-                # Move motor while monitoring sensor values
-                # Set Profile Position mode
-                self.nanolib_accessor.writeNumber(
-                    device_handle, 1, Nanolib.OdIndex(0x6060, 0x00), 8
-                )
+            # Enable motor and start movement
+            for command in [6, 7, 0xF]:
+                self.nanolib_accessor.writeNumber(device_handle, command, Nanolib.OdIndex(0x6040, 0x00), 16)
+            self.nanolib_accessor.writeNumber(device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16)
 
-                # Set velocity and target position
-                self.nanolib_accessor.writeNumber(
-                    device_handle, vel, Nanolib.OdIndex(0x6081, 0x00), 32
-                )
-                pos = 16200  # 1 바퀴
-                self.nanolib_accessor.writeNumber(
-                    device_handle, pos, Nanolib.OdIndex(0x607A, 0x00), 32
-                )
-
-                # Enable and execute movement
-                for command in [6, 7, 0xF]:
-                    self.nanolib_accessor.writeNumber(
-                        device_handle, command, Nanolib.OdIndex(0x6040, 0x00), 16
-                    )
-                self.nanolib_accessor.writeNumber(
-                    device_handle, 0x5F, Nanolib.OdIndex(0x6040, 0x00), 16
-                )
-
-                # Monitor Raw Value in real time
-                print("\nMonitoring Raw Value in real time (Press Ctrl+C to stop):")
-                while True:
-                    raw_value = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x3240, 5)).getResult()
-                    binary_raw = format(raw_value, "032b")  # Convert to 32-bit binary format
-                    if initial_raw_value != raw_value:
-                        self.stop_motor(motor_id)
-                        print(f"FINEAL Raw Value: {binary_raw}")
-                        break
-
-                    time.sleep(0.1)  # Adjust the monitoring interval as needed
-
-                # Save the current position as the home position
-                if motor_id == 1:
-                    self.home_position_motor1 = self.read_motor_position(motor_id)
-                    self.logger.info(f"Home position for motor ID 1 set to: {self.home_position_motor1}")
-                elif motor_id == 2:
-                    self.home_position_motor2 = self.read_motor_position(motor_id)
-                    self.logger.info(f"Home position for motor ID 2 set to: {self.home_position_motor2}")
-
-            else:
-                if motor_id == 1:
-                    self.logger.info(f"Home position already set for motor ID {motor_id}. Moving to home position...")
-                    self.move_motor(motor_id, self.home_position_motor1, vel)  # Move motor to the home position
-                elif motor_id == 2:
-                    self.logger.info(f"Home position already set for motor ID {motor_id}. Moving to home position...")
-                    self.move_motor(motor_id, self.home_position_motor2, vel)  # Move motor to the home position
+            self.logger.info(f"Motor {motor_id} homing initiated. Monitoring position changes...")
+            while True:
+                raw_value = self.nanolib_accessor.readNumber(device_handle, Nanolib.OdIndex(0x3240, 5)).getResult()
+                if initial_raw_value != raw_value:
+                    self.stop_motor(motor_id)
+                    self.logger.info(f"Home position found for Motor {motor_id}.")
+                    break
+                await asyncio.sleep(sleep_time)
 
         except Exception as e:
-            self.logger.error(f"Error during homing process: {e}")
+            self.logger.error(f"Error during homing for Motor {motor_id}.: {e}", exc_info=True)
+            raise
 
 
     def read_motor_position(self, motor_id: int) -> int:
@@ -604,83 +625,3 @@ class ScanBusCallback(Nanolib.NlcScanBusCallback):
 
 callbackScanBus = ScanBusCallback()  # Nanolib 2021
 
-
-"""
-
-    async def homing(self):
-        """"""
-        Move both motors to their home position (Position actual value = 0).
-
-        This method checks the connection state of each motor and moves them to
-        the home position concurrently if they are not already in position.
-        It logs the process and measures the execution time.
-
-        Returns
-        -------
-        None
-            If all motors are successfully moved to the home position or
-            already at the home position.
-
-        Raises
-        ------
-        Exception
-            If any motor is not connected or if there is an error during
-            the homing process.
-        """"""
-        self.logger.debug("Starting the homing process for both motors...")
-        start_time = time.time()
-        target_velocity = 1
-
-        async def move_motor_async(motor_num, position, velocity):
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None, self.move_motor, motor_num, position, velocity
-            )
-
-        try:
-            # Check if all required devices are connected
-            for motor_id, device in self.devices.items():
-                if not device["connected"]:
-                    raise Exception(
-                        f"Error: Motor {motor_id} is not connected. Please connect it before homing."
-                    )
-
-            tasks = []
-            max_position = 4_294_967_296
-
-            for motor_id, device in self.devices.items():
-                current_pos = self.read_motor_position(motor_id)
-                if current_pos != 0:
-                    target_pos = (
-                        -current_pos
-                        if current_pos < 1_000_000
-                        else max_position - current_pos
-                    )
-                    self.logger.info(
-                        f"Motor {motor_id} target position calculated as: {target_pos}"
-                    )
-                    tasks.append(
-                        move_motor_async(motor_id, target_pos, target_velocity)
-                    )
-
-            if not tasks:
-                self.logger.info(
-                    "All motors are already at their home position. No movement needed."
-                )
-                return
-
-            # Execute tasks concurrently
-            results = await asyncio.gather(*tasks)
-            for motor_id, result in enumerate(results, start=1):
-                self.logger.info(f"Motor {motor_id} move result: {result}")
-
-            execution_time = time.time() - start_time
-            self.logger.info(
-                f"Homing process completed in {execution_time:.2f} seconds"
-            )
-
-        except Exception as e:
-            self.logger.error(f"Failed to home motors: {e}")
-            raise
-
-"""

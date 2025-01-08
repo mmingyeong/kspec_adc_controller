@@ -184,6 +184,44 @@ class AdcActions:
                 "message": f"Error activating motor {motor_id}.",
                 "error": str(e),
             }
+        
+    # stop motor
+    async def stop(self, motor_id):
+        try:
+            if motor_id==0:
+                self.logger.debug("Stopping both motors.")
+                async def stop_motor_async(motor_num):
+                    loop = asyncio.get_event_loop()
+                    return await loop.run_in_executor(None, self.controller.stop_motor, motor_num)
+                motor1_task = stop_motor_async(1)
+                motor2_task = stop_motor_async(2)
+                results = await asyncio.gather(motor1_task, motor2_task)
+                self.logger.info("Both motors stopped successfully.")
+                return {
+                    "status": "success",
+                    "message": "Both motors stopped successfully.",
+                    "motor_1": results[0],
+                    "motor_2": results[1],
+                }
+            elif motor_id in [1, 2]:
+                self.logger.debug(f"Stopping motor {motor_id}.")
+                result = self.controller.stop_motor(motor_id)
+                self.logger.info(f"Motor {motor_id} stopped successfully.")
+                return {
+                    "status": "success",
+                    "message": f"Motor {motor_id} stopped successfully.",
+                    "result": result,
+                }
+            else:
+                raise ValueError(f"Invalid motor ID: {motor_id}")
+        except Exception as e:
+            self.logger.error(f"Error stopping motor {motor_id}: {e}", exc_info=True)
+            return {
+                "status": "failure",
+                "message": f"Error stopping motor {motor_id}.",
+                "error": str(e),
+            }
+        
 
     async def activate(self, za, vel_set=1) -> dict:
         """
@@ -214,8 +252,8 @@ class AdcActions:
                     None, self.controller.move_motor, motor_num, position, velocity
                 )
 
-            motor1_task = move_motor_async(1, pos, vel)
-            motor2_task = move_motor_async(2, pos, vel)
+            motor1_task = move_motor_async(1, -pos, vel) # motor 1 L4 위치, 시계 방향 회전전
+            motor2_task = move_motor_async(2, pos, vel) # motor 2 L3 위치, 반시계 방향 회전
 
             results = await asyncio.gather(motor1_task, motor2_task)
 
@@ -230,26 +268,69 @@ class AdcActions:
             self.logger.error(f"Failed to activate motors: {e}")
             return self._generate_response("error", str(e))
 
-    def homing(self, motor_id):
+    async def homing(self):
         """
-        Perform homing operation with specified parameters.
+        Perform a homing operation with the motor controller.
+
+        The operation attempts to initialize the motor to its home position.
 
         Returns:
         -------
-        str
-            A JSON string indicating the success or failure of the operation.
+        dict
+            JSON-like dictionary with the following structure:
+            {
+                "status": "success" | "error",
+                "message": str,  # Only present if "status" is "error".
+            }
         """
         self.logger.info("Starting homing operation.")
         response = {}
         try:
-            result = self.controller.homing(motor_id)
-            response = {
-                "status": "success",
-                "message": result,
-            }
+            self.logger.debug("Calling homing method on controller.")
+            await self.controller.homing()
+            response = {"status": "success"}
             self.logger.info("Homing completed successfully.")
         except Exception as e:
-            self.logger.error(f"Error in homing: {str(e)}")
+            self.logger.error(f"Error in homing operation: {str(e)}", exc_info=True)
+            response = {
+                "status": "error",
+                "message": str(e),
+            }
+        return response
+
+    async def zeroing(self):
+        """
+        Perform a zeroing operation by adjusting motor positions.
+
+        This operation sets the motor's position offsets as specified.
+
+        Returns:
+        -------
+        dict
+            JSON-like dictionary with the following structure:
+            {
+                "status": "success" | "error",
+                "message": str,  # Only present if "status" is "error".
+            }
+        """
+        zero_offset_motor1 = 8000  # Adjust this value based on calibration.
+        zero_offset_motor2 = 2000   # Adjust this value based on calibration.
+
+        self.logger.info("Starting zeroing operation.")
+        response = {}
+        try:
+            self.logger.debug("Initiating homing as part of zeroing.")
+            await self.controller.homing()
+            self.logger.debug(f"Moving motor 1 by {zero_offset_motor1} counts.")
+            self.logger.debug(f"Moving motor 2 by {zero_offset_motor2} counts.")
+            await asyncio.gather(
+                asyncio.to_thread(self.controller.move_motor, 1, zero_offset_motor1, 5),
+                asyncio.to_thread(self.controller.move_motor, 2, zero_offset_motor2, 5)
+            )
+            response = {"status": "success"}
+            self.logger.info("Zeroing completed successfully.")
+        except Exception as e:
+            self.logger.error(f"Error in zeroing operation: {str(e)}", exc_info=True)
             response = {
                 "status": "error",
                 "message": str(e),
@@ -303,215 +384,3 @@ class AdcActions:
             self.logger.error(f"Error in power off: {e}")
             return self._generate_response("error", str(e))
 
-
-"""""" """
-    def poweron(self):
-        """ """
-        Power on and connect to all devices.
-
-        Returns:
-        -------
-        str
-            A JSON string indicating the success or failure of the operation.
-        """ """
-        logging.info("Powering on and connecting to devices.")
-        response = {}
-        try:
-            self.controller.find_devices()
-            self.controller.connect()
-            response = {
-                "status": "success",
-                "message": "Power on and devices connected."
-            }
-            logging.info("Power on successful.")
-        except Exception as e:
-            logging.error(f"Error in poweron: {str(e)}")
-            response = {
-                "status": "error",
-                "message": str(e)
-            }
-        return json.dumps(response)
-
-    def poweroff(self):
-        """ """
-        Power off and disconnect from all devices.
-
-        Returns:
-        -------
-        str
-            A JSON string indicating the success or failure of the operation.
-        """ """
-        logging.info("Powering off and disconnecting from devices.")
-        response = {}
-        try:
-            self.controller.disconnect()
-            self.controller.close()
-            response = {
-                "status": "success",
-                "message": "Power off and devices disconnected."
-            }
-            logging.info("Power off successful.")
-        except Exception as e:
-            logging.error(f"Error in poweroff: {str(e)}")
-            response = {
-                "status": "error",
-                "message": str(e)
-            }
-        return json.dumps(response)
-
-    def connect(self):
-        """ """
-        Connect to the ADC controller.
-
-        Returns:
-        -------
-        str
-            A JSON string indicating the success or failure of the operation.
-        """ """
-        logging.info("Connecting to devices.")
-        response = {}
-        try:
-            self.controller.connect()
-            response = {
-                "status": "success",
-                "message": "Connected to devices."
-            }
-            logging.info("Connection successful.")
-        except Exception as e:
-            logging.error(f"Error in connect: {str(e)}")
-            response = {
-                "status": "error",
-                "message": str(e)
-            }
-        return json.dumps(response)
-
-    def disconnect(self):
-        """ """
-        Disconnect from the ADC controller.
-
-        Returns:
-        -------
-        str
-            A JSON string indicating the success or failure of the operation.
-        """ """
-        logging.info("Disconnecting from devices.")
-        response = {}
-        try:
-            self.controller.disconnect()
-            response = {
-                "status": "success",
-                "message": "Disconnected from devices."
-            }
-            logging.info("Disconnection successful.")
-        except Exception as e:
-            logging.error(f"Error in disconnect: {str(e)}")
-            response = {
-                "status": "error",
-                "message": str(e)
-            }
-        return json.dumps(response)
-
-    def status(self, motor_num=0):
-        """ """
-        Get the status of a specified motor.
-
-        Parameters:
-        ----------
-        motor_num : int, optional
-            The motor number to check. Default is 0.
-
-        Returns:
-        -------
-        str
-            A JSON string indicating the status or any error encountered.
-        """ """
-        logging.info(f"Retrieving status for motor {motor_num}.")
-        response = {}
-        try:
-            state = self.controller.DeviceState(motor_num)
-            response = {
-                "status": "success",
-                "message": f"Motor {motor_num} status retrieved.",
-                "DeviceState": state
-            }
-            logging.info(f"Motor {motor_num} status: {state}")
-        except Exception as e:
-            logging.error(f"Error in status: {str(e)}")
-            response = {
-                "status": "error",
-                "message": str(e),
-                "motor_num": motor_num
-            }
-        return json.dumps(response)
-
-    async def activate(self, pos:int, vel1=5, vel2=5):
-        """ """
-        #Activate both motors simultaneously with specified velocities.
-
-        #Parameters:
-        #----------
-        #vel1 : int, optional
-        #    The target velocity for motor 1. Default is 5.
-        #vel2 : int, optional
-        #    The target velocity for motor 2. Default is 5.
-
-        #Returns:
-        #-------
-        #str
-        #    A JSON string indicating the success or failure of the activation.
-        """ """
-        logging.info("Activating motors.")
-        response = {}
-
-        async def move_motor_async(MotorNum, pos, vel):
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(None, self.controller.move_motor, MotorNum, pos, vel)
-
-        try:
-            motor1_task = move_motor_async(1, pos, vel1)
-            motor2_task = move_motor_async(2, pos, vel2)
-
-            results = await asyncio.gather(motor1_task, motor2_task)
-
-            response = {
-                "status": "success",
-                "message": "Motors activated successfully.",
-                "motor_1": results[0],
-                "motor_2": results[1]
-            }
-            logging.info("Motors activated successfully.")
-        except Exception as e:
-            logging.error(f"Failed to activate motors: {str(e)}")
-            response = {
-                "status": "error",
-                "message": str(e)
-            }
-
-        return json.dumps(response)
-
-    async def homing(self):
-        """ """
-        #Perform homing operation with specified parameters.
-
-        #Returns:
-        #-------
-        #str
-        #    A JSON string indicating the success or failure of the operation.
-        """ """
-        logging.info("Starting homing operation.")
-        response = {}
-        try:
-            state = await self.controller.homing()
-            response = {
-                "status": "success",
-                "message": "Homing completed.",
-            }
-            logging.info("Homing completed successfully.")
-        except Exception as e:
-            logging.error(f"Error in homing: {str(e)}")
-            response = {
-                "status": "error",
-                "message": str(e),
-            }
-        return json.dumps(response)
-""" """"""
