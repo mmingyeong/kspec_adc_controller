@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*- 
 #
 # @Author: Mingyeong Yang (mmingyeong@kasi.re.kr)
 # @Date: 2024-06-26
@@ -46,7 +46,7 @@ class AdcActions:
             return self._generate_response("success", "Connected to devices.")
         except Exception as e:
             self.logger.error(f"Error in connect: {e}", exc_info=True)
-            return self._generate_response("error", str(e))
+            return self._generate_response("error", f"Failed to connect: {str(e)}")
 
     def _generate_response(self, status: str, message: str, **kwargs) -> dict:
         """
@@ -66,11 +66,12 @@ class AdcActions:
         dict
             A dictionary representing the response.
         """
+        # Ensure 'status' and 'message' are included in the response, and optionally update with additional data
         response = {"status": status, "message": message}
         response.update(kwargs)
         return response
 
-    def get_motor_status(self, motor_num: int = 0) -> dict:
+    def status(self, motor_num: int = 0) -> dict:
         """
         Get the status of a specified motor.
 
@@ -91,7 +92,7 @@ class AdcActions:
             return self._generate_response("success", f"Motor {motor_num} status retrieved.", DeviceState=state)
         except Exception as e:
             self.logger.error(f"Error in status: {e}", exc_info=True)
-            return self._generate_response("error", str(e), motor_num=motor_num)
+            return self._generate_response("error", f"Error retrieving motor {motor_num} status: {str(e)}", motor_num=motor_num)
 
 
     async def move(self, motor_id, pos_count, vel_set=1):
@@ -126,30 +127,30 @@ class AdcActions:
                 results = await asyncio.gather(motor1_task, motor2_task)
 
                 self.logger.info("Both motors moved successfully.")
-                return {
-                    "status": "success",
-                    "message": "Both motors activated successfully.",
-                    "motor_1": results[0],
-                    "motor_2": results[1],
-                }
+                return self._generate_response(
+                    "success",
+                    "Both motors activated successfully.",
+                    motor_1=results[0],
+                    motor_2=results[1],
+                )
             else:
                 self.logger.debug(
                     f"Moving motor {motor_id} to position {pos_count} with velocity {vel_set}."
                 )
                 result = await asyncio.to_thread(self.controller.move_motor, motor_id, pos_count, vel_set)
                 self.logger.info(f"Motor {motor_id} moved successfully to position {pos_count}.")
-                return {
-                    "status": "success",
-                    "message": f"Motor {motor_id} activated successfully.",
-                    "result": result,
-                }
+                return self._generate_response(
+                    "success",
+                    f"Motor {motor_id} activated successfully.",
+                    result=result,
+                )
         except Exception as e:
             self.logger.error(f"Error moving motor {motor_id} to position {pos_count} with velocity {vel_set}: {e}", exc_info=True)
-            return {
-                "status": "failure",
-                "message": f"Error activating motor {motor_id}.",
-                "error": str(e),
-            }
+            return self._generate_response(
+                "error", 
+                f"Error activating motor {motor_id}.", 
+                error=str(e),
+            )
 
     async def stop(self, motor_id):
         """
@@ -173,30 +174,30 @@ class AdcActions:
                 motor2_task = asyncio.to_thread(self.controller.stop_motor, 2)
                 results = await asyncio.gather(motor1_task, motor2_task)
                 self.logger.info("Both motors stopped successfully.")
-                return {
-                    "status": "success",
-                    "message": "Both motors stopped successfully.",
-                    "motor_1": results[0],
-                    "motor_2": results[1],
-                }
+                return self._generate_response(
+                    "success",
+                    "Both motors stopped successfully.",
+                    motor_1=results[0],
+                    motor_2=results[1],
+                )
             elif motor_id in [1, 2]:
                 self.logger.debug(f"Stopping motor {motor_id}.")
                 result = await asyncio.to_thread(self.controller.stop_motor, motor_id)
                 self.logger.info(f"Motor {motor_id} stopped successfully.")
-                return {
-                    "status": "success",
-                    "message": f"Motor {motor_id} stopped successfully.",
-                    "result": result,
-                }
+                return self._generate_response(
+                    "success",
+                    f"Motor {motor_id} stopped successfully.",
+                    result=result,
+                )
             else:
                 raise ValueError(f"Invalid motor ID: {motor_id}")
         except Exception as e:
             self.logger.error(f"Error stopping motor {motor_id}: {e}", exc_info=True)
-            return {
-                "status": "failure",
-                "message": f"Error stopping motor {motor_id}.",
-                "error": str(e),
-            }
+            return self._generate_response(
+                "error", 
+                f"Error stopping motor {motor_id}.", 
+                error=str(e),
+            )
 
     async def activate(self, za, vel_set=1) -> dict:
         """
@@ -236,7 +237,11 @@ class AdcActions:
             )
         except Exception as e:
             self.logger.error(f"Failed to activate motors with zenith angle {za}: {e}", exc_info=True)
-            return self._generate_response("error", str(e))
+            return self._generate_response(
+                "error", 
+                f"Error activating motors with zenith angle {za}.", 
+                error=str(e),
+            )
 
 
     async def homing(self):
@@ -254,19 +259,14 @@ class AdcActions:
             - "message": A string explaining the failure, only present if "status" is "error".
         """
         self.logger.info("Starting homing operation.")
-        response = {}
         try:
             self.logger.debug("Calling homing method on controller.")
             await self.controller.homing()
-            response = {"status": "success"}
             self.logger.info("Homing completed successfully.")
+            return self._generate_response("success", "Homing completed successfully.")
         except Exception as e:
             self.logger.error(f"Error in homing operation: {str(e)}", exc_info=True)
-            response = {
-                "status": "error",
-                "message": str(e),
-            }
-        return response
+            return self._generate_response("error", str(e))
 
     async def zeroing(self):
         """
@@ -282,11 +282,10 @@ class AdcActions:
             - "status": "success" if the zeroing was successful, "error" if it failed.
             - "message": A string explaining the failure, only present if "status" is "error".
         """
-        zero_offset_motor1 = 8000  # Adjust this value based on calibration.
+        zero_offset_motor1 = 7000  # Adjust this value based on calibration.
         zero_offset_motor2 = 2000  # Adjust this value based on calibration.
 
         self.logger.info("Starting zeroing operation.")
-        response = {}
         try:
             self.logger.debug("Initiating homing as part of zeroing.")
             await self.controller.homing()
@@ -296,15 +295,11 @@ class AdcActions:
                 asyncio.to_thread(self.controller.move_motor, 1, zero_offset_motor1, 5),
                 asyncio.to_thread(self.controller.move_motor, 2, zero_offset_motor2, 5)
             )
-            response = {"status": "success"}
             self.logger.info("Zeroing completed successfully.")
+            return self._generate_response("success", "Zeroing completed successfully.")
         except Exception as e:
             self.logger.error(f"Error in zeroing operation: {str(e)}", exc_info=True)
-            response = {
-                "status": "error",
-                "message": str(e),
-            }
-        return response
+            return self._generate_response("error", str(e))
 
     def disconnect(self):
         """
@@ -320,21 +315,13 @@ class AdcActions:
             - "message": A string explaining the failure, only present if "status" is "error".
         """
         self.logger.info("Disconnecting from devices.")
-        response = {}
         try:
             self.controller.disconnect()
-            response = {
-                "status": "success",
-                "message": "Disconnected from devices."
-            }
             self.logger.info("Disconnection successful.")
+            return self._generate_response("success", "Disconnected from devices.")
         except Exception as e:
             self.logger.error(f"Error in disconnect: {str(e)}", exc_info=True)
-            response = {
-                "status": "error",
-                "message": str(e)
-            }
-        return response
+            return self._generate_response("error", str(e))
 
     def power_off(self) -> dict:
         """
@@ -354,11 +341,7 @@ class AdcActions:
             self.controller.disconnect()
             self.controller.close()
             self.logger.info("Power off successful.")
-            return self._generate_response(
-                "success", "Power off and devices disconnected."
-            )
+            return self._generate_response("success", "Power off and devices disconnected.")
         except Exception as e:
             self.logger.error(f"Error in power off: {str(e)}", exc_info=True)
             return self._generate_response("error", str(e))
-        
-        
