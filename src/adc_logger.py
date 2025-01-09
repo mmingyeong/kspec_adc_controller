@@ -17,7 +17,7 @@ class AdcLogger:
 
     _initialized_loggers = set()  # Class-level set to track initialized loggers
 
-    def __init__(self, stream_level=logging.DEBUG, enable_file_logging=False):
+    def __init__(self, stream_level=logging.INFO, enable_file_logging=False):
         """
         Initialize the logger with configurable log levels and optional file logging.
 
@@ -35,7 +35,7 @@ class AdcLogger:
 
         # Create logger
         self.logger = logging.getLogger(logger_name)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
         # Configure formatter
         formatter = logging.Formatter(
@@ -45,7 +45,7 @@ class AdcLogger:
         # Console handler
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(formatter)
-        stream_handler.setLevel(logging.DEBUG)  # Set to DEBUG or INFO
+        stream_handler.setLevel(logging.INFO)  # Set to DEBUG or INFO
         if not self.logger.hasHandlers():
             self.logger.addHandler(stream_handler)
 
@@ -54,7 +54,7 @@ class AdcLogger:
             default_file_name = f"{logger_name}.log"
             file_handler = logging.FileHandler(default_file_name)
             file_handler.setFormatter(formatter)
-            file_handler.setLevel(logging.INFO)  # Default file logging level
+            file_handler.setLevel(logging.DEBUG)  # Default file logging level
             self.logger.addHandler(file_handler)
 
     def debug(self, message):
