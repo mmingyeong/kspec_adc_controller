@@ -282,7 +282,7 @@ class AdcActions:
             - "status": "success" if the zeroing was successful, "error" if it failed.
             - "message": A string explaining the failure, only present if "status" is "error".
         """
-        zero_offset_motor1 = 7000  # Adjust this value based on calibration.
+        zero_offset_motor1 = 7500  # Adjust this value based on calibration.
         zero_offset_motor2 = 2000  # Adjust this value based on calibration.
 
         self.logger.info("Starting zeroing operation.")
