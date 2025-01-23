@@ -89,10 +89,10 @@ class AdcActions:
         try:
             state = self.controller.device_state(motor_num)
             self.logger.info(f"Motor {motor_num} status: {state}")
-            return self._generate_response("success", f"Motor {motor_num} status retrieved.", DeviceState=state)
+            return self._generate_response("success", f"Motor {motor_num} status retrieved: {state}")
         except Exception as e:
             self.logger.error(f"Error in status: {e}", exc_info=True)
-            return self._generate_response("error", f"Error retrieving motor {motor_num} status: {str(e)}", motor_num=motor_num)
+            return self._generate_response("error", f"Error retrieving motor {motor_num} status: {str(e)}")
 
 
     async def move(self, motor_id, pos_count, vel_set=1):
@@ -111,8 +111,7 @@ class AdcActions:
         Returns
         -------
         dict
-            A response dictionary indicating the success or failure of the operation, 
-            including the results of the motor movement.
+            A response dictionary indicating the success or failure of the operation.
         """
         try:
             if motor_id == 0:
@@ -129,9 +128,8 @@ class AdcActions:
                 self.logger.info("Both motors moved successfully.")
                 return self._generate_response(
                     "success",
-                    "Both motors activated successfully.",
-                    motor_1=results[0],
-                    motor_2=results[1],
+                    f"Both motors moved to position {pos_count} with velocity {vel_set}. "
+                    f"Results: Motor1: {results[0]}, Motor2: {results[1]}"
                 )
             else:
                 self.logger.debug(
@@ -141,16 +139,15 @@ class AdcActions:
                 self.logger.info(f"Motor {motor_id} moved successfully to position {pos_count}.")
                 return self._generate_response(
                     "success",
-                    f"Motor {motor_id} activated successfully.",
-                    result=result,
+                    f"Motor {motor_id} moved to position {pos_count} with velocity {vel_set}. Result: {result}"
                 )
         except Exception as e:
             self.logger.error(f"Error moving motor {motor_id} to position {pos_count} with velocity {vel_set}: {e}", exc_info=True)
             return self._generate_response(
                 "error", 
-                f"Error activating motor {motor_id}.", 
-                error=str(e),
+                f"Failed to move motor {motor_id} to position {pos_count} with velocity {vel_set}: {str(e)}"
             )
+
 
     async def stop(self, motor_id):
         """
@@ -164,8 +161,7 @@ class AdcActions:
         Returns
         -------
         dict
-            A response dictionary indicating success or failure of the operation, 
-            including the results of stopping the motor(s).
+            A response dictionary indicating success or failure of the operation.
         """
         try:
             if motor_id == 0:
@@ -176,9 +172,7 @@ class AdcActions:
                 self.logger.info("Both motors stopped successfully.")
                 return self._generate_response(
                     "success",
-                    "Both motors stopped successfully.",
-                    motor_1=results[0],
-                    motor_2=results[1],
+                    f"Both motors stopped successfully. Results: Motor1: {results[0]}, Motor2: {results[1]}"
                 )
             elif motor_id in [1, 2]:
                 self.logger.debug(f"Stopping motor {motor_id}.")
@@ -186,8 +180,7 @@ class AdcActions:
                 self.logger.info(f"Motor {motor_id} stopped successfully.")
                 return self._generate_response(
                     "success",
-                    f"Motor {motor_id} stopped successfully.",
-                    result=result,
+                    f"Motor {motor_id} stopped successfully. Result: {result}"
                 )
             else:
                 raise ValueError(f"Invalid motor ID: {motor_id}")
@@ -195,66 +188,9 @@ class AdcActions:
             self.logger.error(f"Error stopping motor {motor_id}: {e}", exc_info=True)
             return self._generate_response(
                 "error", 
-                f"Error stopping motor {motor_id}.", 
-                error=str(e),
+                f"Failed to stop motor {motor_id}: {str(e)}"
             )
 
-    async def activate(self, za, vel_set=1) -> dict:
-        """
-        Activate both motors simultaneously to the calculated target position based on zenith angle.
-
-        Parameters
-        ----------
-        za : float
-            Input zenith angle (in degrees) that determines the target position for the motors.
-        vel_set : int, optional
-            The velocity at which to move the motors (in RPM). Defaults to 1.
-            Maximum allowed velocity is 5 RPM. If a value greater than 5 is provided,
-            it will be automatically capped at 5 RPM.
-
-        Returns
-        -------
-        dict
-            A dictionary indicating the success or failure of the activation.
-        """
-
-        self.logger.info(f"Activating motors with zenith angle {za}.")
-        
-        # Limit the velocity to a maximum of 5 RPM
-        max_velocity = 5
-        if vel_set > max_velocity:
-            self.logger.warning(
-                f"Requested velocity ({vel_set} RPM) exceeds the limit of {max_velocity} RPM. "
-                f"Setting velocity to {max_velocity} RPM."
-            )
-        vel = min(vel_set, max_velocity)
-
-        ang = self.calculator.calc_from_za(za)
-        pos = self.calculator.degree_to_count(ang)
-
-        try:
-            # Activate motors using asyncio.to_thread for non-blocking calls
-            # motor 1 L4 위치, 빛의 진행 방향 기준 시계 방향 회전
-            motor1_task = asyncio.to_thread(self.controller.move_motor, 1, pos, vel)
-            # motor 2 L3 위치, 빛의 진행 방향 기준 반시계 방향 회전
-            motor2_task = asyncio.to_thread(self.controller.move_motor, 2, pos, vel)
-
-            results = await asyncio.gather(motor1_task, motor2_task)
-
-            self.logger.info("Motors activated successfully.")
-            return self._generate_response(
-                "success",
-                "Motors activated successfully.",
-                motor_1=results[0],
-                motor_2=results[1],
-            )
-        except Exception as e:
-            self.logger.error(f"Failed to activate motors with zenith angle {za}: {e}", exc_info=True)
-            return self._generate_response(
-                "error", 
-                f"Error activating motors with zenith angle {za}.", 
-                error=str(e),
-            )
 
     async def activate(self, za, vel_set=1) -> dict:
         """
@@ -302,32 +238,38 @@ class AdcActions:
             self.logger.info(f"Calculated angle: {ang}, position: {pos}.")
         except Exception as e:
             self.logger.error(f"Error in calculating motor position: {e}", exc_info=True)
-            return self._generate_response("error", "Calculation error", error=str(e))
+            return self._generate_response(
+                "error",
+                f"Failed to calculate motor position for zenith angle {za}: {str(e)}"
+            )
 
         try:
             # Activate motors
-            # motor 1 L4 위치, 빛의 진행 방향 기준 시계 방향 회전
             motor1_task = asyncio.to_thread(self.controller.move_motor, 1, pos, vel)
-            # motor 2 L3 위치, 빛의 진행 방향 기준 반시계 방향 회전
             motor2_task = asyncio.to_thread(self.controller.move_motor, 2, pos, vel)
-            
+
             results = await asyncio.gather(motor1_task, motor2_task, return_exceptions=True)
 
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     self.logger.error(f"Motor {i+1} failed: {result}")
-                    return self._generate_response("error", f"Motor {i+1} activation failed", error=str(result))
+                    return self._generate_response(
+                        "error",
+                        f"Motor {i+1} activation failed with position {pos} and velocity {vel}. Error: {result}"
+                    )
 
             self.logger.info("Motors activated successfully.")
             return self._generate_response(
                 "success",
-                "Motors activated successfully.",
-                motor_1=results[0],
-                motor_2=results[1],
+                f"Motors activated to position {pos} with velocity {vel}. "
+                f"Results: Motor1: {results[0]}, Motor2: {results[1]}"
             )
         except Exception as e:
             self.logger.error(f"Failed to activate motors with zenith angle {za}: {e}", exc_info=True)
-            return self._generate_response("error", "Unexpected error occurred", error=str(e))
+            return self._generate_response(
+                "error",
+                f"Failed to activate motors for zenith angle {za} with velocity {vel}: {str(e)}"
+            )
 
 
     async def homing(self, homing_vel=1):
