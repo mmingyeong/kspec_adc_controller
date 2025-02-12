@@ -153,7 +153,7 @@ class AdcActions:
                 self.logger.debug(
                     f"Moving motor {motor_id} to position {pos_count} with velocity {vel_set}."
                 )
-                result = await asyncio.to_thread(self.controller.move_motor, motor_id, pos_count, vel_set)
+                result = await asyncio.to_thread(self.controller.move_motor, motor_id, -pos_count, vel_set)
                 self.logger.info(f"Motor {motor_id} moved successfully to position {pos_count}.")
                 return self._generate_response(
                     "success",
