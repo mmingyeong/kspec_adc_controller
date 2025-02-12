@@ -6,9 +6,9 @@
 # @Filename: adc_actions.py
 
 import asyncio
-from adc_controller import AdcController
-from adc_logger import AdcLogger
-from adc_calc_angle import ADCCalc
+from .adc_controller import AdcController
+from .adc_logger import AdcLogger
+from .adc_calc_angle import ADCCalc
 
 __all__ = ["AdcActions"]
 
@@ -119,8 +119,8 @@ class AdcActions:
                     f"Starting simultaneous move for motors 1 and 2 to position {pos_count} with velocity {vel_set}."
                 )
 
-                motor1_task = asyncio.to_thread(self.controller.move_motor, 1, pos_count, vel_set)
-                motor2_task = asyncio.to_thread(self.controller.move_motor, 2, pos_count, vel_set)
+                motor1_task = asyncio.to_thread(self.controller.move_motor, 1, -pos_count, vel_set)
+                motor2_task = asyncio.to_thread(self.controller.move_motor, 2, -pos_count, vel_set)
 
                 # Wait for both motors to complete
                 results = await asyncio.gather(motor1_task, motor2_task)
@@ -130,6 +130,24 @@ class AdcActions:
                     "success",
                     f"Both motors moved to position {pos_count} with velocity {vel_set}. "
                     f"Results: Motor1: {results[0]}, Motor2: {results[1]}"
+                )
+            elif motor_id == -1:
+                self.logger.debug(
+                    f"Starting simultaneous move for motors 1 and 2 to position {pos_count} with velocity {vel_set} in same direction"
+                )
+
+                motor1_task = asyncio.to_thread(self.controller.move_motor, 1, -pos_count, vel_set)
+                motor2_task = asyncio.to_thread(self.controller.move_motor, 2, pos_count, vel_set)
+
+                # Wait for both motors to complete
+                results = await asyncio.gather(motor1_task, motor2_task)
+
+                self.logger.info("Both motors moved successfully.")
+                return self._generate_response(
+                    "success",
+                    "Both motors activated successfully.",
+                    motor_1=results[0],
+                    motor_2=results[1],
                 )
             else:
                 self.logger.debug(
@@ -245,8 +263,11 @@ class AdcActions:
 
         try:
             # Activate motors
-            motor1_task = asyncio.to_thread(self.controller.move_motor, 1, pos, vel)
-            motor2_task = asyncio.to_thread(self.controller.move_motor, 2, pos, vel)
+            # Activate motors using asyncio.to_thread for non-blocking calls
+            # motor 1 L4 위치, 빛의 진행 방향 기준 시계 방향 회전
+            motor1_task = asyncio.to_thread(self.controller.move_motor, 1, -pos, vel)
+            # motor 2 L3 위치, 빛의 진행 방향 기준 반시계 방향 회전
+            motor2_task = asyncio.to_thread(self.controller.move_motor, 2, -pos, vel)
 
             results = await asyncio.gather(motor1_task, motor2_task, return_exceptions=True)
 

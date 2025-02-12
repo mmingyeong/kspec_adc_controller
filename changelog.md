@@ -14,3 +14,21 @@
 - **Documentation**:
   - Documented installation and usage instructions, along with descriptions of key features and APIs.
   - Provided sample code and usage examples.
+
+
+### v1.1.0 - Post-February Field Test Updates (2025-02-12)
+
+- **New Features**:
+  - **Velocity Limits**: Enforced motor speed limits (max **5 RPM**, default **1 RPM**) to prevent excessive speeds and ensure safe operation.
+  - **Logging Enhancements**: Added detailed logging messages for motor movements, homing, parking, and zeroing processes, improving debugging and diagnostics.
+  - **Error Handling**: Strengthened exception handling across motor control functions to reduce unexpected crashes and improve reliability.
+
+- **Improvements**:
+  - **Configuration Management**: Updated **ADC configuration file path** for better project structure and maintainability.
+  - **Motor Position Adjustments**: Refined **zeroing, parking, and homing** calculations to ensure more accurate motor positioning based on field test feedback.
+  - **Homing Process**: Improved homing logic with **bus stop validation** and **timeout protection**, preventing unnecessary movements.
+  - **Motor Stop Logic**: Verified motor **halt status** using status word checks to confirm successful stopping before proceeding.
+
+- **Bug Fixes**:
+  - Resolved potential issues causing **unexpected motor movements** after homing or zeroing.
+  - Fixed handling of **motor connection states**, ensuring correct device status reporting.

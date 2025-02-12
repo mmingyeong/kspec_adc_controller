@@ -36,7 +36,9 @@ class AdcController:
         The maximum motor position. Default is 4,294,967,296.
     """
 
-    CONFIG_FILE = "etc/adc_config.json"
+    #CONFIG_FILE = "etc/adc_config.json"
+    CONFIG_FILE = "./ADC/kspec_adc_controller/src/etc/adc_config.json"
+
 
     def __init__(self, logger):
         """
@@ -458,8 +460,9 @@ class AdcController:
             Exception: If homing has not been completed.
             Exception: If an error occurs while moving the motors to the zero position.
         """
-        zero_offset_motor1 = 7561  # Adjust this value based on calibration.
-        zero_offset_motor2 = 2000  # Adjust this value based on calibration.
+        # 20250212 modifid by Mingyeong Yang
+        zero_offset_motor1 = 7635  # Adjust this value based on calibration.
+        zero_offset_motor2 = 1926  # Adjust this value based on calibration.
 
         if not self.home_position:
             self.logger.error("Zeroing must be performed after homing.")
@@ -543,7 +546,7 @@ class AdcController:
                 self.logger.info("Initializing homing process for both motors.")
                 raw_val_motor1 = self.nanolib_accessor.readNumber(device_handle_motor1, Nanolib.OdIndex(0x3240, 5)).getResult()
                 raw_val_motor2 = self.nanolib_accessor.readNumber(device_handle_motor2, Nanolib.OdIndex(0x3240, 5)).getResult()
-                print(f"Raw value Motor 1: {raw_val_motor1}, Raw value Motor 2: {raw_val_motor2}")
+                self.logger.info(f"Raw value Motor 1: {raw_val_motor1}, Raw value Motor 2: {raw_val_motor2}")
                 if raw_val_motor1 == busstop and raw_val_motor2 == busstop:
                     self.logger.info("Both motors are already at the bus stop position.")
                 else:
