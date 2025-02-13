@@ -32,3 +32,16 @@
 - **Bug Fixes**:
   - Resolved potential issues causing **unexpected motor movements** after homing or zeroing.
   - Fixed handling of **motor connection states**, ensuring correct device status reporting.
+
+
+### v1.2.0 - Calculator Command Enhancements (2025-02-13)
+
+- **New Features**:
+  - **Calculator Commands**: Added `calc_from_za` and `degree_to_count` functions with complete docstrings, logging, and structured responses using `_generate_response()`.
+
+- **Improvements**:
+  - **Logging Enhancements**: Added detailed logging for calculation operations, ensuring clearer diagnostics during debugging.
+  - **Response Consistency**: Unified success and error responses across all commands, aligning with `power_off` function standards.
+  
+- **Error Handling**:
+  - Enhanced exception handling in `calc_from_za` and `degree_to_count` to log errors with stack traces and return standardized error responses.
