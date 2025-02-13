@@ -515,7 +515,7 @@ class AdcActions:
         try:
             fn_za_adc = self.calculator.calc_from_za(za)
             self.logger.info(f"Calculation successful: {fn_za_adc}")
-            return self._generate_response("success", f"Calculation result: {fn_za_adc}")
+            return self._generate_response("success", fn_za_adc)
         except Exception as e:
             self.logger.error(f"Error calculating from ZA: {str(e)}", exc_info=True)
             return self._generate_response("error", str(e))
@@ -543,7 +543,7 @@ class AdcActions:
         try:
             count = self.calculator.degree_to_count(degree)
             self.logger.info(f"Conversion successful: {count}")
-            return self._generate_response("success", f"Conversion result: {count}")
+            return self._generate_response("success", count)
         except Exception as e:
             self.logger.error(f"Error converting degrees to counts: {str(e)}", exc_info=True)
             return self._generate_response("error", str(e))
