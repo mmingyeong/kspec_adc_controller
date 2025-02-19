@@ -14,6 +14,26 @@ from nanotec_nanolib import Nanolib
 __all__ = ["AdcController"]
 max_position = 4_294_967_296
 
+
+def _get_default_adc_config_path() -> str:
+    """
+    Returns the default configuration path for AdcController.
+    Raises FileNotFoundError if the file does not exist.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_path = os.path.join(
+        script_dir,
+        "etc",           # etc 폴더 위치
+        "adc_config.json"  # 실제 config 파일 이름
+    )
+    if not os.path.isfile(default_path):
+        raise FileNotFoundError(
+            f"Default config file not found at: {default_path}. "
+            "Please adjust `_get_default_adc_config_path()` or place your config file there."
+        )
+    return default_path
+
+
 class AdcController:
     """
     Interacts with a KSPEC ADC system over a serial port.
@@ -36,11 +56,7 @@ class AdcController:
         The maximum motor position. Default is 4,294,967,296.
     """
 
-    #CONFIG_FILE = "etc/adc_config.json"
-    CONFIG_FILE = "./ADC/kspec_adc_controller/src/etc/adc_config.json"
-
-
-    def __init__(self, logger):
+    def __init__(self, logger, config: str = None):
         """
         Initializes the AdcController.
 
@@ -48,17 +64,25 @@ class AdcController:
         ----------
         logger : logging.Logger
             Logger instance for debugging and informational logs.
+        config : str, optional
+            Path to the JSON configuration file. If None, a default path is used.
         """
+        if config is None:
+            # config 파라미터가 없으면 기본 경로 사용
+            config = _get_default_adc_config_path()
+
+        self.CONFIG_FILE = config  # 내부에서 사용할 config 파일 경로
         self.logger = logger
         self.nanolib_accessor = Nanolib.getNanoLibAccessor()
         self.logger.debug("Initializing AdcController")
+
         self.devices = {
             1: {"handle": None, "connected": False},
             2: {"handle": None, "connected": False},
         }
         self.selected_bus_index = self._load_selected_bus_index()
         self.home_position = False
-        self.max_position = 4_294_967_296
+        self.max_position = max_position
 
     def _load_selected_bus_index(self) -> int:
         """
@@ -79,13 +103,14 @@ class AdcController:
         if os.path.exists(self.CONFIG_FILE):
             try:
                 with open(self.CONFIG_FILE, "r") as file:
-                    config = json.load(file)
-                    return config.get("selected_bus_index", default_index)
+                    config_data = json.load(file)
+                    return config_data.get("selected_bus_index", default_index)
             except (json.JSONDecodeError, IOError) as e:
                 self.logger.error(f"Error reading configuration file: {e}")
         else:
             self.logger.warning(
-                f"Configuration file {self.CONFIG_FILE} not found. Using default index {default_index}."
+                f"Configuration file {self.CONFIG_FILE} not found. "
+                f"Using default index {default_index}."
             )
         return default_index
 

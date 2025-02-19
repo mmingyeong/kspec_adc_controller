@@ -24,7 +24,7 @@ class AdcActions:
         logger : AdcLogger, optional
             Logger instance for logging operations. If None, a default AdcLogger instance is created.
         """
-        self.logger = logger or AdcLogger(__file__)  # Use provided logger or create a default one
+        self.logger = logger or AdcLogger()  # Use provided logger or create a default one
         self.logger.debug("Initializing AdcActions class.")
         self.controller = AdcController(self.logger)
         self.controller.find_devices()

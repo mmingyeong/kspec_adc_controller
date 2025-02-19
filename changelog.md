@@ -45,3 +45,18 @@
   
 - **Error Handling**:
   - Enhanced exception handling in `calc_from_za` and `degree_to_count` to log errors with stack traces and return standardized error responses.
+
+### v1.2.1 - Absolute Path & Logging Improvements (2025-02-19)
+
+- **New Features**:
+  - **Default Config Lookups**: Introduced `_get_default_adc_config_path()` and `_get_default_lookup_path()` to dynamically determine the absolute path for ADC configs and lookup tables.
+  
+- **Improvements**:
+  - **AdcController**: Uses absolute paths for config files, preventing file-not-found errors irrespective of where the script is executed.
+  - **AdcCalc**: Employs `_get_default_lookup_path()` to load `ADC_lookup.csv` from a consistent, absolute directory reference.
+  - **AdcLogger**: Enhanced logging behaviors to unify console and file outputs, ensuring logs are always written to the script’s directory regardless of runtime location.
+  - **Response & Logging Consistency**: Standardized success/error handling across all modules, improving debuggability and clarity when exceptions occur.
+  
+- **Error Handling**:
+  - **FileNotFoundError Enhancements**: Clear, immediate exceptions if config or lookup CSV files are missing or unreadable, aiding rapid issue identification.
+  - **Detailed Stack Traces**: Errors in initialization or config loading now log full exception details, expediting troubleshooting.
