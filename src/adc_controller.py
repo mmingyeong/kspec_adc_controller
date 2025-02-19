@@ -571,7 +571,7 @@ class AdcController:
                 self.logger.info("Initializing homing process for both motors.")
                 raw_val_motor1 = self.nanolib_accessor.readNumber(device_handle_motor1, Nanolib.OdIndex(0x3240, 5)).getResult()
                 raw_val_motor2 = self.nanolib_accessor.readNumber(device_handle_motor2, Nanolib.OdIndex(0x3240, 5)).getResult()
-                self.logger.info(f"Raw value Motor 1: {raw_val_motor1}, Raw value Motor 2: {raw_val_motor2}")
+                self.logger.debug(f"Raw value Motor 1: {raw_val_motor1}, Raw value Motor 2: {raw_val_motor2}")
                 if raw_val_motor1 == busstop and raw_val_motor2 == busstop:
                     self.logger.info("Both motors are already at the bus stop position.")
                 else:
@@ -684,7 +684,7 @@ class AdcController:
                 #print(f"Raw value: {raw_value}")
                 if initial_raw_value != raw_value:
                     self.stop_motor(motor_id)
-                    self.logger.info(f"Home position found for Motor {motor_id}.")
+                    self.logger.debug(f"Home position found for Motor {motor_id}.")
                     break
 
                 # Check if homing took too long
