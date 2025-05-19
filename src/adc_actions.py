@@ -128,7 +128,7 @@ class AdcActions:
                 self.logger.info("Both motors moved successfully.")
                 return self._generate_response(
                     "success",
-                    f"Both motors moved to position {pos_count} with velocity {vel_set}. "
+                    f"Both motors moved to position {pos_count} with velocity {vel_set}. ",
                     motor_1=results[0],
                     motor_2=results[1],
                 )
