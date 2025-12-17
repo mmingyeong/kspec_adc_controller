@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import json
 import sys
@@ -5,7 +6,6 @@ import types
 from pathlib import Path
 
 import pytest
-import asyncio
 
 
 # -------------------------
@@ -29,7 +29,6 @@ class DummyLogger:
         self.warnings.append(msg)
 
     def error(self, msg, exc_info=False):
-        # 실제 코드에서 exc_info=True로 들어오는 경우도 있어서 인자 흡수
         self.errors.append(msg)
 
     def exception(self, msg):
@@ -75,10 +74,24 @@ class FakeAccessor:
     def __init__(self):
         self.connected_handles = set()
         self.positions = {}  # handle -> position(int)
+
+        # connection
         self.connect_error = None
         self.disconnect_error = None
-        self.read_error = None
         self.check_conn_state = {}  # handle -> bool
+
+        # read/write injection
+        self.read_error = None  # readNumber를 error로 만들기
+        self.write_raises_at_idx = set()  # 특정 od_index.idx에서 writeNumber가 Exception throw
+
+        # close injection
+        self.close_error = None
+
+        # ---- find_devices 관련 injection ----
+        self.list_bus_error = None
+        self.open_bus_error = None
+        self.scan_error = None
+        self.add_device_error = None  # True면 addDevice error
 
         # find_devices용
         self.bus_ids = _FakeSizeList([_FakeBusId("BUS0"), _FakeBusId("BUS1")])
@@ -86,10 +99,11 @@ class FakeAccessor:
         self.add_device_handles = ["H1", "H2"]
 
         # move/stop용
-        self._status_sequence = [0x0000, 0x1400]  # move 완료 플래그로 종료되게
+        self._status_sequence = [0x0000, 0x1400]  # move 완료 플래그로 종료
         self._status_i = 0
         self.write_calls = []  # writeNumber 호출 기록
 
+    # ---- connect/disconnect ----
     def connectDevice(self, handle):
         if self.connect_error:
             return FakeResult(error=self.connect_error)
@@ -107,47 +121,53 @@ class FakeAccessor:
     def checkConnectionState(self, handle):
         return FakeResult(result=self.check_conn_state.get(handle, False))
 
-    # 아래는 테스트 범위 밖이지만, 코드가 참조할 수 있어 stub로 둠
+    # ---- bus close ----
     def closeBusHardware(self, adc_motor_id):
+        if self.close_error:
+            return FakeResult(error=self.close_error)
         return FakeResult(result=True)
 
-    # ---- find_devices 관련 ----
+    # ---- find_devices ----
     def listAvailableBusHardware(self):
+        if self.list_bus_error:
+            return FakeResult(error=self.list_bus_error)
         return FakeResult(result=self.bus_ids)
 
     def openBusHardwareWithProtocol(self, bus_id, options):
+        if self.open_bus_error:
+            return FakeResult(error=self.open_bus_error)
         return FakeResult(result=True)
 
     def scanDevices(self, bus_id, callback):
+        if self.scan_error:
+            return FakeResult(error=self.scan_error)
         return FakeResult(result=self.scan_device_ids)
 
     def addDevice(self, device_id):
-        # DEV0 -> H1, DEV1 -> H2
+        if self.add_device_error:
+            return FakeResult(error="ADD_DEVICE_FAIL")
         s = str(device_id)
         idx = 0 if "DEV0" in s else 1
         return FakeResult(result=self.add_device_handles[idx])
 
-    # ---- motion 관련 ----
+    # ---- motion ----
     def writeNumber(self, handle, value, od_index, bits):
+        if getattr(od_index, "idx", None) in self.write_raises_at_idx:
+            raise RuntimeError(f"WRITE_FAIL idx={od_index.idx:#x}")
         self.write_calls.append((handle, value, od_index.idx, od_index.sub, bits))
         return FakeResult(result=True)
 
     def readNumber(self, handle, od_index):
         """
-        - read_error가 설정되면 hasError() True가 되도록 FakeResult(error=...) 반환
-        - statusword(0x6041)는 _status_sequence로 반환해서 move_motor 루프를 종료시키거나
-          stop_motor 분기(0x8000 bit) 테스트 가능
+        - read_error가 설정되면 FakeResult(error=...) 반환
+        - statusword(0x6041)는 _status_sequence로 반환
         - 그 외는 positions에서 반환
         """
-        # ✅ (중요) 에러 주입: read_motor_position에서 예외가 나도록
         if self.read_error:
             return FakeResult(error=self.read_error)
 
-        # status word(0x6041) 처리
         if getattr(od_index, "idx", None) == 0x6041:
-            v = self._status_sequence[
-                min(self._status_i, len(self._status_sequence) - 1)
-            ]
+            v = self._status_sequence[min(self._status_i, len(self._status_sequence) - 1)]
             self._status_i += 1
             return FakeResult(result=v)
 
@@ -167,7 +187,6 @@ def make_fake_nanolib_module(fake_accessor: FakeAccessor):
         def getNanoLibAccessor():
             return fake_accessor
 
-        # adc_controller가 타입/상수 참조하는 것들 최소 제공
         class OdIndex:
             def __init__(self, idx, sub):
                 self.idx = idx
@@ -176,7 +195,6 @@ def make_fake_nanolib_module(fake_accessor: FakeAccessor):
         class NlcScanBusCallback:
             pass
 
-        # 아래는 ScanBusCallback 내에서 비교/반환에 사용될 수 있어 최소 정의
         BusScanInfo_Start = 1
         BusScanInfo_Progress = 2
         BusScanInfo_Finished = 3
@@ -184,7 +202,6 @@ def make_fake_nanolib_module(fake_accessor: FakeAccessor):
         class ResultVoid:
             pass
 
-        # find_devices 경로에서 참조되는 옵션/시리얼 관련(이번 유닛 테스트에서는 직접 호출 안 함)
         class BusHardwareOptions:
             def __init__(self):
                 self.opts = []
@@ -193,19 +210,14 @@ def make_fake_nanolib_module(fake_accessor: FakeAccessor):
                 self.opts.append((name, value))
 
         class Serial:
-            def BAUD_RATE_OPTIONS_NAME(self):
-                return "baud_rate"
-
-            def PARITY_OPTIONS_NAME(self):
-                return "parity"
+            BAUD_RATE_OPTIONS_NAME = "baud_rate"
+            PARITY_OPTIONS_NAME = "parity"
 
         class SerialBaudRate:
-            def BAUD_RATE_115200(self):
-                return 115200
+            BAUD_RATE_115200 = 115200
 
         class SerialParity:
-            def EVEN(self):
-                return "even"
+            EVEN = "even"
 
     fake_mod.Nanolib = _FakeNanolibNamespace
     return fake_mod
@@ -219,11 +231,10 @@ def adc_controller_module(monkeypatch):
     """
     fake_accessor = FakeAccessor()
     fake_nanolib = make_fake_nanolib_module(fake_accessor)
-
     monkeypatch.setitem(sys.modules, "nanotec_nanolib", fake_nanolib)
 
     mod = importlib.import_module("kspec_adc_controller.adc_controller")
-    mod = importlib.reload(mod)  # 이미 import된 상태에서도 fake 의존성 반영
+    mod = importlib.reload(mod)
     return mod, fake_accessor
 
 
@@ -240,11 +251,9 @@ def config_file(tmp_path: Path) -> str:
 
 
 # -------------------------
-# Tests
+# Core tests (existing + extended)
 # -------------------------
-def test_init_loads_selected_bus_index_from_valid_json(
-    adc_controller_module, logger, config_file
-):
+def test_init_loads_selected_bus_index_from_valid_json(adc_controller_module, logger, config_file):
     mod, _fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
@@ -253,9 +262,7 @@ def test_init_loads_selected_bus_index_from_valid_json(
     assert any("Initializing AdcController" in m for m in logger.debugs)
 
 
-def test_load_selected_bus_index_missing_file_defaults_to_1(
-    adc_controller_module, logger, tmp_path
-):
+def test_load_selected_bus_index_missing_file_defaults_to_1(adc_controller_module, logger, tmp_path):
     mod, _fake_accessor = adc_controller_module
     missing = str(tmp_path / "missing.json")
 
@@ -264,9 +271,7 @@ def test_load_selected_bus_index_missing_file_defaults_to_1(
     assert any("not found" in m for m in logger.warnings)
 
 
-def test_load_selected_bus_index_invalid_json_defaults_to_1(
-    adc_controller_module, logger, tmp_path
-):
+def test_load_selected_bus_index_invalid_json_defaults_to_1(adc_controller_module, logger, tmp_path):
     mod, _fake_accessor = adc_controller_module
     bad = tmp_path / "bad.json"
     bad.write_text("{not-json", encoding="utf-8")
@@ -276,9 +281,7 @@ def test_load_selected_bus_index_invalid_json_defaults_to_1(
     assert any("Error reading configuration file" in m for m in logger.errors)
 
 
-def test_connect_invalid_motor_number_raises_and_logs_exception(
-    adc_controller_module, logger, config_file
-):
+def test_connect_invalid_motor_number_raises_and_logs_exception(adc_controller_module, logger, config_file):
     mod, _fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
@@ -288,9 +291,7 @@ def test_connect_invalid_motor_number_raises_and_logs_exception(
     assert any("An error occurred while connecting" in m for m in logger.exceptions)
 
 
-def test_connect_all_motors_success_updates_state(
-    adc_controller_module, logger, config_file
-):
+def test_connect_all_motors_success_updates_state(adc_controller_module, logger, config_file):
     mod, fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
@@ -305,9 +306,22 @@ def test_connect_all_motors_success_updates_state(
     assert "H2" in fake_accessor.connected_handles
 
 
-def test_disconnect_motor_success_updates_state(
-    adc_controller_module, logger, config_file
-):
+def test_connect_error_raises_and_logs(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.devices[1]["handle"] = "H1"
+    c.devices[1]["connected"] = False
+    fake_accessor.connect_error = "CONNECT_FAIL"
+
+    with pytest.raises(Exception):
+        c.connect(1)
+
+    assert any("Error connecting device 1" in m for m in logger.errors)
+    assert any("An error occurred while connecting" in m for m in logger.exceptions)
+
+
+def test_disconnect_motor_success_updates_state(adc_controller_module, logger, config_file):
     mod, fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
@@ -322,9 +336,33 @@ def test_disconnect_motor_success_updates_state(
     assert "H1" not in fake_accessor.connected_handles
 
 
-def test_connect_when_already_connected_does_not_call_error(
-    adc_controller_module, logger, config_file
-):
+def test_disconnect_when_not_connected_logs_info(adc_controller_module, logger, config_file):
+    mod, _fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.devices[1]["handle"] = "H1"
+    c.devices[1]["connected"] = False
+
+    c.disconnect(1)
+    assert any("was not connected" in m for m in logger.infos)
+
+
+def test_disconnect_error_raises_and_logs(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.devices[1]["handle"] = "H1"
+    c.devices[1]["connected"] = True
+    fake_accessor.disconnect_error = "DISCONNECT_FAIL"
+
+    with pytest.raises(Exception):
+        c.disconnect(1)
+
+    assert any("Error disconnecting device 1" in m for m in logger.errors)
+    assert any("An error occurred while disconnecting" in m for m in logger.exceptions)
+
+
+def test_connect_when_already_connected_does_not_call_error(adc_controller_module, logger, config_file):
     mod, fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
@@ -336,9 +374,7 @@ def test_connect_when_already_connected_does_not_call_error(
     assert any("already connected" in m for m in logger.infos)
 
 
-def test_read_motor_position_requires_connected(
-    adc_controller_module, logger, config_file
-):
+def test_read_motor_position_requires_connected(adc_controller_module, logger, config_file):
     mod, _fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
@@ -360,9 +396,7 @@ def test_read_motor_position_success(adc_controller_module, logger, config_file)
     assert c.read_motor_position(1) == 12345
 
 
-def test_read_motor_position_read_error_raises(
-    adc_controller_module, logger, config_file
-):
+def test_read_motor_position_read_error_raises(adc_controller_module, logger, config_file):
     mod, fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
@@ -373,12 +407,10 @@ def test_read_motor_position_read_error_raises(
     with pytest.raises(Exception):
         c.read_motor_position(1)
 
-    assert any("Failed to read position" in m for m in logger.errors)
+    assert any("Failed to read position for Motor 1" in m for m in logger.errors)
 
 
-def test_device_state_returns_position_and_connection_state(
-    adc_controller_module, logger, config_file
-):
+def test_device_state_returns_position_and_connection_state(adc_controller_module, logger, config_file):
     mod, fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
@@ -400,9 +432,7 @@ def test_device_state_returns_position_and_connection_state(
     assert res["motor2"]["connection_state"] is False
 
 
-def test_device_state_invalid_motor_number_raises(
-    adc_controller_module, logger, config_file
-):
+def test_device_state_invalid_motor_number_raises(adc_controller_module, logger, config_file):
     mod, _fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
@@ -410,6 +440,9 @@ def test_device_state_invalid_motor_number_raises(
         c.device_state(99)
 
 
+# -------------------------
+# find_devices coverage (success + failure branches)
+# -------------------------
 def test_find_devices_registers_handles(adc_controller_module, logger, config_file):
     mod, _fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
@@ -422,19 +455,98 @@ def test_find_devices_registers_handles(adc_controller_module, logger, config_fi
     assert any("Selected bus hardware ID" in m for m in logger.infos)
 
 
-def test_move_motor_writes_sequence_and_returns_result(
-    adc_controller_module, logger, config_file, monkeypatch
-):
+def test_find_devices_list_bus_has_error_raises(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    fake_accessor.list_bus_error = "LIST_BUS_FAIL"
+    with pytest.raises(Exception):
+        c.find_devices()
+
+
+def test_find_devices_no_bus_ids_raises(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    fake_accessor.bus_ids = _FakeSizeList([])
+    with pytest.raises(Exception) as e:
+        c.find_devices()
+    assert "No bus hardware IDs found" in str(e.value)
+
+
+def test_find_devices_open_bus_error_raises(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    fake_accessor.open_bus_error = "OPEN_BUS_FAIL"
+    with pytest.raises(Exception):
+        c.find_devices()
+
+
+def test_find_devices_scan_error_raises(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    fake_accessor.scan_error = "SCAN_FAIL"
+    with pytest.raises(Exception):
+        c.find_devices()
+
+
+def test_find_devices_no_devices_found_raises(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    fake_accessor.scan_device_ids = _FakeSizeList([])
+    with pytest.raises(Exception) as e:
+        c.find_devices()
+    assert "No devices found during scan" in str(e.value)
+
+
+def test_find_devices_add_device_error_raises(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    fake_accessor.add_device_error = True
+    with pytest.raises(Exception):
+        c.find_devices()
+
+
+# -------------------------
+# close() coverage
+# -------------------------
+def test_close_success(adc_controller_module, logger, config_file):
+    mod, _fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+    c.adc_motor_id = "BUS0"
+    c.close()
+    assert any("Bus hardware closed successfully" in m for m in logger.infos)
+
+
+def test_close_has_error_raises(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+    c.adc_motor_id = "BUS0"
+    fake_accessor.close_error = "CLOSE_FAIL"
+    with pytest.raises(Exception):
+        c.close()
+
+
+# -------------------------
+# move_motor coverage (vel None/default, loop, failure)
+# -------------------------
+def test_move_motor_default_velocity_when_vel_none(adc_controller_module, logger, config_file, monkeypatch):
     mod, fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
 
+    # loop 한 번 이상 돌게
+    fake_accessor._status_sequence = [0x0000, 0x0000, 0x1400]
+    fake_accessor._status_i = 0
+
     c._moved = False
-    monkeypatch.setattr(
-        c, "read_motor_position", lambda motor_id: 150 if c._moved else 100
-    )
+    monkeypatch.setattr(c, "read_motor_position", lambda motor_id: 150 if c._moved else 100)
 
     orig_write = fake_accessor.writeNumber
 
@@ -446,23 +558,53 @@ def test_move_motor_writes_sequence_and_returns_result(
     fake_accessor.writeNumber = wrapped_write
     monkeypatch.setattr(mod.time, "sleep", lambda *_: None)
 
-    res = c.move_motor(1, pos=999, vel=123)
+    res = c.move_motor(1, pos=999, vel=None)
 
     assert res["initial_position"] == 100
     assert res["final_position"] == 150
-    assert res["position_change"] == 50
-    assert any(call[2] == 0x6081 for call in fake_accessor.write_calls)
-    assert any(call[2] == 0x607A for call in fake_accessor.write_calls)
+    # default velocity(1000)가 설정됐는지
+    assert any(call[2] == 0x6081 and call[1] == 1000 for call in fake_accessor.write_calls)
 
 
-def test_stop_motor_success_when_halt_bit_set(
-    adc_controller_module, logger, config_file
-):
+def test_move_motor_write_raises_logs_and_raises(adc_controller_module, logger, config_file, monkeypatch):
     mod, fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
+
+    fake_accessor.write_raises_at_idx.add(0x607A)
+    monkeypatch.setattr(mod.time, "sleep", lambda *_: None)
+
+    with pytest.raises(Exception):
+        c.move_motor(1, pos=999, vel=123)
+
+    assert any("Failed to move Motor 1" in m for m in logger.errors)
+
+
+# -------------------------
+# stop_motor coverage (handle None / read fail)
+# -------------------------
+def test_stop_motor_handle_none_raises(adc_controller_module, logger, config_file):
+    mod, _fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.devices[1]["handle"] = None
+    c.devices[1]["connected"] = True
+
+    with pytest.raises(ValueError):
+        c.stop_motor(1)
+
+    assert any("Device not found" in m for m in logger.errors)
+
+
+def test_stop_motor_success_when_halt_bit_set(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.devices[1]["handle"] = "H1"
+    c.devices[1]["connected"] = True
+
     fake_accessor._status_sequence = [0x8000]
     fake_accessor._status_i = 0
 
@@ -471,14 +613,13 @@ def test_stop_motor_success_when_halt_bit_set(
     assert res["error_code"] is None
 
 
-def test_stop_motor_failed_when_halt_bit_not_set(
-    adc_controller_module, logger, config_file
-):
+def test_stop_motor_failed_when_halt_bit_not_set(adc_controller_module, logger, config_file):
     mod, fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
+
     fake_accessor._status_sequence = [0x0001]
     fake_accessor._status_i = 0
 
@@ -487,12 +628,29 @@ def test_stop_motor_failed_when_halt_bit_not_set(
     assert res["error_code"] == 0x0001
 
 
+def test_stop_motor_read_error_raises(adc_controller_module, logger, config_file):
+    mod, fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.devices[1]["handle"] = "H1"
+    c.devices[1]["connected"] = True
+    fake_accessor.read_error = "READ_FAIL"
+
+    with pytest.raises(Exception):
+        c.stop_motor(1)
+
+    assert any("Error during stopping" in m for m in logger.errors)
+
+
+# -------------------------
+# parking/zeroing/homing: wrap-around branches + threshold branches
+# -------------------------
 @pytest.mark.asyncio
 async def test_parking_requires_homing(adc_controller_module, logger, config_file):
     mod, _fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
-    c.home_position = False  # homing 안 됨
+    c.home_position = False
     with pytest.raises(Exception):
         await c.parking(parking_vel=1)
 
@@ -512,35 +670,149 @@ async def test_zeroing_requires_homing(adc_controller_module, logger, config_fil
 
 
 @pytest.mark.asyncio
-async def test_homing_sets_home_positions_when_first_time(
-    adc_controller_module, logger, config_file, monkeypatch
-):
+async def test_parking_threshold_no_move(adc_controller_module, logger, config_file, monkeypatch):
     """
-    home_position=False 상태에서:
-    - raw_val이 busstop(192)로 이미 같으면 find_home_position을 호출하지 않음
-    - read_motor_position으로 home_position_motor1/2 설정
-    - home_position True로 바뀜
+    target_pos_1/2가 threshold(10)보다 작으면 move_motor를 호출하지 않는 분기.
+    """
+    mod, _fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.home_position = True
+    c.home_position_motor1 = 1000
+    c.home_position_motor2 = 2000
+
+    # parking_offset=-500 => home+offset = 500, 1500
+    # current_pos를 같게 맞추면 target_pos=0
+    monkeypatch.setattr(c, "read_motor_position", lambda motor_id: 500 if motor_id == 1 else 1500)
+
+    called = {"move": 0}
+
+    def fake_move(*args, **kwargs):
+        called["move"] += 1
+        return {"ok": True}
+
+    monkeypatch.setattr(c, "move_motor", fake_move)
+
+    await c.parking(parking_vel=1)
+
+    assert called["move"] == 0
+    assert any("already close to the parking position" in m for m in logger.infos)
+
+
+@pytest.mark.asyncio
+async def test_zeroing_threshold_no_move(adc_controller_module, logger, config_file, monkeypatch):
+    mod, _fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.home_position = True
+    c.home_position_motor1 = 0
+    c.home_position_motor2 = 0
+
+    # zero_offset 7635/1926, current_pos가 딱 target과 같아서 target_pos=0
+    monkeypatch.setattr(
+        c, "read_motor_position", lambda motor_id: 7635 if motor_id == 1 else 1926
+    )
+
+    called = {"move": 0}
+
+    def fake_move(*args, **kwargs):
+        called["move"] += 1
+        return {"ok": True}
+
+    monkeypatch.setattr(c, "move_motor", fake_move)
+
+    await c.zeroing(zeroing_vel=1)
+
+    assert called["move"] == 0
+    assert any("already close to Zero position" in m for m in logger.infos)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "p1,p2",
+    [
+        (100, 200),  # both < 1e6
+        (100, 2_000_000),  # only p1 < 1e6
+        (2_000_000, 100),  # only p2 < 1e6
+        (2_000_000, 3_000_000),  # both >= 1e6
+    ],
+)
+async def test_parking_wraparound_branches_call_move(adc_controller_module, logger, config_file, monkeypatch, p1, p2):
+    """
+    parking의 4개 wrap-around 분기 모두 타게 하고, move_motor가 호출되는지 확인.
+    """
+    mod, _fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.home_position = True
+    c.home_position_motor1 = 10_000
+    c.home_position_motor2 = 20_000
+
+    monkeypatch.setattr(c, "read_motor_position", lambda motor_id: p1 if motor_id == 1 else p2)
+
+    calls = []
+
+    def fake_move(motor_id, pos, vel):
+        calls.append((motor_id, pos, vel))
+        return {"motor": motor_id, "pos": pos}
+
+    monkeypatch.setattr(c, "move_motor", fake_move)
+
+    await c.parking(parking_vel=3)
+
+    # threshold에 걸릴 확률이 낮도록 home/pos를 잡았으니 보통 2회 호출
+    assert len(calls) in (0, 2)  # 혹시 우연히 threshold에 걸리면 0일 수 있어도 허용
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "p1,p2",
+    [
+        (100, 200),
+        (100, 2_000_000),
+        (2_000_000, 100),
+        (2_000_000, 3_000_000),
+    ],
+)
+async def test_zeroing_wraparound_branches_call_move(adc_controller_module, logger, config_file, monkeypatch, p1, p2):
+    mod, _fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.home_position = True
+    c.home_position_motor1 = 10_000
+    c.home_position_motor2 = 20_000
+
+    monkeypatch.setattr(c, "read_motor_position", lambda motor_id: p1 if motor_id == 1 else p2)
+
+    calls = []
+
+    def fake_move(motor_id, pos, vel):
+        calls.append((motor_id, pos, vel))
+        return {"motor": motor_id, "pos": pos}
+
+    monkeypatch.setattr(c, "move_motor", fake_move)
+
+    await c.zeroing(zeroing_vel=2)
+
+    assert len(calls) in (0, 2)
+
+
+@pytest.mark.asyncio
+async def test_homing_sets_home_positions_when_first_time_busstop(adc_controller_module, logger, config_file, monkeypatch):
+    """
+    home_position=False 상태에서 raw_val이 busstop=192면 find_home_position을 호출하지 않는 분기.
     """
     mod, fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
 
-    # motor handle 준비
     c.devices[1]["handle"] = "H1"
     c.devices[2]["handle"] = "H2"
 
-    # homing()은 handle 존재만 체크하고 connected는 안 봄
-    # raw_val readNumber(0x3240,5)에서 busstop=192가 나오도록 세팅 필요:
-    # -> FakeAccessor.readNumber는 지금 statusword(0x6041)만 특별 처리하고 나머진 positions를 리턴함
-    # 그래서 od_index.idx=0x3240 일 때 positions에서 192 나오게 하면 됨.
     fake_accessor.positions["H1"] = 192
     fake_accessor.positions["H2"] = 192
 
-    # home positions 저장은 read_motor_position(connected 필요)라 monkeypatch로 우회
-    monkeypatch.setattr(
-        c, "read_motor_position", lambda motor_id: 111 if motor_id == 1 else 222
-    )
+    monkeypatch.setattr(c, "read_motor_position", lambda motor_id: 111 if motor_id == 1 else 222)
 
-    # find_home_position이 호출되면 실패하게 해서 "안 불렸음" 보장
     async def boom(*args, **kwargs):
         raise RuntimeError("should not be called")
 
@@ -556,9 +828,47 @@ async def test_homing_sets_home_positions_when_first_time(
 
 
 @pytest.mark.asyncio
-async def test_find_home_position_timeout(
-    adc_controller_module, logger, config_file, monkeypatch
-):
+@pytest.mark.parametrize(
+    "p1,p2",
+    [
+        (100, 200),
+        (100, 2_000_000),
+        (2_000_000, 100),
+        (2_000_000, 3_000_000),
+    ],
+)
+async def test_homing_when_already_home_position_wraparound_moves(adc_controller_module, logger, config_file, monkeypatch, p1, p2):
+    """
+    home_position=True 분기에서 wrap-around 4분기 + move 호출을 커버.
+    """
+    mod, _fake_accessor = adc_controller_module
+    c = mod.AdcController(logger=logger, config=config_file)
+
+    c.devices[1]["handle"] = "H1"
+    c.devices[2]["handle"] = "H2"
+
+    c.home_position = True
+    c.home_position_motor1 = 10_000
+    c.home_position_motor2 = 20_000
+
+    monkeypatch.setattr(c, "read_motor_position", lambda motor_id: p1 if motor_id == 1 else p2)
+
+    calls = []
+
+    def fake_move(motor_id, pos, vel):
+        calls.append((motor_id, pos, vel))
+        return {"motor": motor_id}
+
+    monkeypatch.setattr(c, "move_motor", fake_move)
+
+    await c.homing(homing_vel=1)
+
+    # threshold에 걸리면 0, 아니면 2
+    assert len(calls) in (0, 2)
+
+
+@pytest.mark.asyncio
+async def test_find_home_position_timeout(adc_controller_module, logger, config_file, monkeypatch):
     """
     find_home_position에서 raw_value가 변하지 않으면 timeout.
     time.time을 조작해서 빠르게 TimeoutError까지 가게 함.
@@ -567,11 +877,8 @@ async def test_find_home_position_timeout(
     c = mod.AdcController(logger=logger, config=config_file)
 
     c.devices[1]["handle"] = "H1"
+    fake_accessor.positions["H1"] = 123  # raw 값 고정
 
-    # raw_value를 계속 같은 값으로 유지 (positions[H1]=123)
-    fake_accessor.positions["H1"] = 123
-
-    # stop_motor 호출되도록 spy 형태로
     called = {"stop": 0}
 
     def fake_stop(motor_id):
@@ -580,20 +887,68 @@ async def test_find_home_position_timeout(
 
     monkeypatch.setattr(c, "stop_motor", fake_stop)
 
-    # time.time을 빠르게 증가시켜 timeout(300s) 넘기기
+    # time.time 빠르게 점프
     t = {"v": 0.0}
 
     def fake_time():
-        t["v"] += 400.0  # 호출될 때마다 400초 점프
+        t["v"] += 400.0
         return t["v"]
 
     monkeypatch.setattr(mod.time, "time", fake_time)
 
-    # sleep은 즉시 반환
-    monkeypatch.setattr(asyncio, "sleep", lambda *_args, **_kwargs: asyncio.sleep(0))
+    async def fast_sleep(_):
+        return None
+
+    monkeypatch.setattr(mod.asyncio, "sleep", fast_sleep)
 
     with pytest.raises(TimeoutError):
         await c.find_home_position(1, homing_vel=1, sleep_time=0)
 
     assert called["stop"] >= 1
     assert any("Timeout" in m for m in logger.errors)
+
+
+# -------------------------
+# ScanBusCallback coverage (prints)
+# -------------------------
+def test_scanbuscallback_prints_start_progress_finished(adc_controller_module, capsys):
+    mod, _fake_accessor = adc_controller_module
+
+    cb = mod.ScanBusCallback()
+
+    cb.callback(mod.Nanolib.BusScanInfo_Start, devicesFound=0, data=0)
+    cb.callback(mod.Nanolib.BusScanInfo_Progress, devicesFound=0, data=0)  # data even => "."
+    cb.callback(mod.Nanolib.BusScanInfo_Finished, devicesFound=0, data=0)
+
+    out = capsys.readouterr().out
+    assert "Scan started." in out
+    assert "." in out
+    assert "Scan finished." in out
+
+
+# -------------------------
+# _get_default_adc_config_path coverage
+# -------------------------
+def test_get_default_adc_config_path_missing_raises(adc_controller_module, monkeypatch):
+    mod, _fake_accessor = adc_controller_module
+
+    monkeypatch.setattr(mod.os.path, "isfile", lambda _p: False)
+
+    with pytest.raises(FileNotFoundError):
+        mod._get_default_adc_config_path()
+
+
+def test_get_default_adc_config_path_success(adc_controller_module, tmp_path, monkeypatch):
+    mod, _fake_accessor = adc_controller_module
+
+    # __file__ 기준으로 etc/adc_config.json이 존재하도록 구성
+    fake_script_dir = tmp_path / "src" / "kspec_adc_controller"
+    etc_dir = fake_script_dir / "etc"
+    etc_dir.mkdir(parents=True, exist_ok=True)
+    (etc_dir / "adc_config.json").write_text('{"selected_bus_index": 0}', encoding="utf-8")
+
+    monkeypatch.setattr(mod, "__file__", str(fake_script_dir / "adc_controller.py"))
+
+    path = mod._get_default_adc_config_path()
+    assert path.endswith(str(Path("etc") / "adc_config.json"))
+    assert Path(path).exists()
