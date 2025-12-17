@@ -8,7 +8,7 @@
 KSPEC-ADC control software for atmospheric dispersion correction during KSPEC observations.  
 It drives two prism rotation motors (counter-rotating wedge prisms), computes prism setpoints from telescope metadata (zenith distance; provided by the K-SPEC ICS), and exposes a unified command-style interface for integration with the K-SPEC ICS.
 
-## Hardware (summary)
+## Hardware
 
 - 2 × prism rotation axes (counter-rotating wedge prisms)
 - Typical deployment: shared fieldbus motor drivers (serial-over-Ethernet or TCP/IP depending on configuration)
