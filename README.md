@@ -1,39 +1,50 @@
-# KSPEC ADC Controller
+# kspec_adc_controller
 
 [![codecov](https://codecov.io/github/mmingyeong/kspec_adc_controller/graph/badge.svg?token=YOFIOHG94E)](https://codecov.io/github/mmingyeong/kspec_adc_controller)
 [![tests](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/tests.yml/badge.svg)](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/tests.yml)
 [![ruff-lint](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/ruff-lint.yml/badge.svg)](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/ruff-lint.yml)
 ![python>=3.10](https://img.shields.io/badge/python-%E2%89%A53.10-blue)
 
-## Overview
+KSPEC-ADC control software for atmospheric dispersion correction during KSPEC observations.  
+It drives two prism rotation motors (counter-rotating wedge prisms), computes prism setpoints from telescope metadata (zenith distance; provided by the K-SPEC ICS), and exposes a unified command-style interface for integration with the K-SPEC ICS.
 
-`kspec_adc_controller` is a Python-based control software for the **K-SPEC Atmospheric Dispersion Corrector (ADC)**.  
-It provides remote, real-time control of the ADC system, which compensates for atmospheric dispersion during spectroscopic observations by driving a pair of counter-rotating wedge prism motors.
+## Hardware (summary)
 
-The software is designed to operate as part of the **K-SPEC Instrument Control System (ICS)**, translating telescope metadata (e.g., zenith distance) into precise prism motor setpoints and executing coordinated motor commands with logging and safety checks.
+- 2 × prism rotation axes (counter-rotating wedge prisms)
+- Typical deployment: shared fieldbus motor drivers (serial-over-Ethernet or TCP/IP depending on configuration)
+- Lookup-table–based setpoints generated from optical simulations (e.g., Zemax)
 
-## Key Capabilities
+## Core capabilities
 
-- **Atmospheric dispersion correction** using two counter-rotating prism motors
-- **Zenith-angle–based prism angle computation** via precomputed lookup tables
-- **Asynchronous motor control** for non-blocking operations
-- **Initialization and homing procedures** for repeatable zero-point calibration
-- **Status monitoring and diagnostics** with structured logging
-- **Fault handling** for communication and motion errors
+- Centralized control of the ADC motor system (dual-axis)
+- Zenith-angle–based prism angle computation using a precomputed lookup table
+- Multiple interpolation methods for smooth setpoints (cubic / PCHIP / Akima)
+- Asynchronous motion control (non-blocking) for coordinated dual-axis moves
+- Initialization and homing procedures for repeatable zero-point calibration
+- Monitoring/diagnostics (motor states, positions, errors) with structured logging
+- Fault handling with safe stop / error reporting to the ICS
 
-## Software Structure
+## Command-style API (implemented)
 
-The control system is organized into three main layers:
+- `connect` — connect to motor(s)
+- `disconnect` — disconnect motor(s)
+- `homing` — perform homing procedure (velocity-limited)
+- `activate` — compute prism angles from zenith distance and apply dual-axis motion
+- `stop` — halt motor motion
+- `status` — retrieve current motor states (position/connection/error info)
+- `power_off` — disconnect devices and release bus resources safely  
+  *(exact naming/behavior may vary by integration layer; see `AdcActions`)*
 
-- **`AdcActions`**  
-  ICS-facing command interface that validates inputs, orchestrates operations, and returns standardized responses.
+## Installation
 
-- **`AdcController`**  
-  Core hardware control layer responsible for device discovery, connection management, motor motion, homing, parking, and safety handling.
+Clone the repository:
 
-- **`ADCCalc` / `AdcLogger`**  
-  Utility modules for prism-angle computation (with multiple interpolation methods) and consistent system logging.
+```bash
+git clone https://github.com/mmingyeong/kspec_adc_controller.git
+```
 
-## Intended Use
+## Notes
 
-This package is intended for astronomers and engineers operating the K-SPEC instrument, and for development, testing, and integration of ADC control logic within the K-SPEC software ecosystem.
+This project is designed to interface with the K-SPEC ICS through a minimal set of operations.
+Hardware communication is encapsulated in AdcController, while the ICS-facing interface is provided by AdcActions.
+For development and CI, unit tests are designed to run with mocked hardware dependencies.
