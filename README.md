@@ -1,7 +1,7 @@
 # kspec_adc_controller
 
 [![codecov](https://codecov.io/github/mmingyeong/kspec_adc_controller/graph/badge.svg?token=YOFIOHG94E)](https://codecov.io/github/mmingyeong/kspec_adc_controller)
-[![tests](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/tests.yml/badge.svg)](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/tests.yml)
+[![tests](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/tests.yml)
 [![ruff-lint](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/ruff-lint.yml/badge.svg)](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/ruff-lint.yml)
 ![python>=3.10](https://img.shields.io/badge/python-%E2%89%A53.10-blue)
 
