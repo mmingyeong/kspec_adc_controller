@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 
 import pytest
@@ -123,13 +124,13 @@ class FakeCalc:
         if self.calc_from_za_raises:
             raise self.calc_from_za_raises
         self.calc_from_za_calls.append(za)
-        return 10.0  # degrees (임의)
+        return 10.0  # degrees
 
     def degree_to_count(self, degree):
         if self.degree_to_count_raises:
             raise self.degree_to_count_raises
         self.degree_to_count_calls.append(degree)
-        return 100  # counts (임의)
+        return 100  # counts
 
 
 @pytest.fixture
@@ -167,7 +168,6 @@ def test_init_creates_controller_and_calls_find_devices(actions):
 def test_init_find_devices_raises_propagates(actions_module, monkeypatch):
     """
     __init__ 안에서 controller.find_devices()가 실패하면 생성 자체가 실패하는게 정상.
-    (현재 구현은 try/except가 없어서 propagate 됨)
     """
     ctrl = FakeController(DummyLogger())
     ctrl.find_devices_raises = RuntimeError("find fail")
@@ -369,8 +369,8 @@ async def test_activate_calc_error_returns_error(actions):
 @pytest.mark.asyncio
 async def test_activate_one_motor_fails_returns_error(actions):
     """
-    activate()는 gather(return_exceptions=True)라서
-    한쪽 모터만 실패하면 results에 Exception이 들어오고 error response로 리턴해야 함.
+    activate()는 gather(return_exceptions=True)라서 한쪽 모터만 실패하면
+    results에 Exception이 들어오고 error response로 리턴해야 함.
     """
     actions.controller.move_motor_raises_for.add(2)
 
@@ -378,6 +378,31 @@ async def test_activate_one_motor_fails_returns_error(actions):
     assert res["status"] == "error"
     assert "activation failed" in res["message"]
     assert any("Motor 2 failed" in m for m in actions.logger.errors)
+
+
+@pytest.mark.asyncio
+async def test_activate_outer_except_branch_is_covered(monkeypatch, actions_module):
+    """
+    activate()의 바깥 try/except(모터 실행 부분)에서,
+    예기치 못한 예외가 발생할 때의 except 분기를 커버.
+    (asyncio.gather 자체를 강제로 터뜨림)
+    """
+    actions = actions_module.AdcActions()
+
+    # 계산 파트는 성공하게 두고, gather가 터지게 만든다.
+    orig_gather = asyncio.gather
+
+    async def boom_gather(*_args, **_kwargs):
+        raise RuntimeError("gather blew up")
+
+    monkeypatch.setattr(asyncio, "gather", boom_gather)
+    try:
+        res = await actions.activate(za=1.0, vel_set=1)
+        assert res["status"] == "error"
+        assert "Failed to activate motors" in res["message"]
+        assert "gather blew up" in res["message"]
+    finally:
+        monkeypatch.setattr(asyncio, "gather", orig_gather)
 
 
 # -------------------------

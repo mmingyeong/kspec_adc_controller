@@ -35,11 +35,15 @@ def test_initialization_creates_log_dir_and_adds_handlers(tmp_path):
     assert any(isinstance(h, logging.FileHandler) for h in adc.logger.handlers)
 
     # 파일 핸들러는 DEBUG로 고정
-    file_handlers = [h for h in adc.logger.handlers if isinstance(h, logging.FileHandler)]
+    file_handlers = [
+        h for h in adc.logger.handlers if isinstance(h, logging.FileHandler)
+    ]
     assert file_handlers[0].level == logging.DEBUG
 
     # 스트림 핸들러 레벨 확인
-    stream_handlers = [h for h in adc.logger.handlers if isinstance(h, logging.StreamHandler)]
+    stream_handlers = [
+        h for h in adc.logger.handlers if isinstance(h, logging.StreamHandler)
+    ]
     assert stream_handlers[0].level == logging.INFO
 
 
@@ -72,7 +76,9 @@ def test_log_methods_include_filename_in_message(caplog, tmp_path):
         adc.error("err")
 
     # 메시지에 "(at my_module.py)"가 붙는지 확인
-    messages = [rec.getMessage() for rec in caplog.records if rec.name == adc.logger.name]
+    messages = [
+        rec.getMessage() for rec in caplog.records if rec.name == adc.logger.name
+    ]
     assert "hello (at my_module.py)" in messages
     assert "dbg (at my_module.py)" in messages
     assert "warn (at my_module.py)" in messages
@@ -122,7 +128,9 @@ def test_default_log_dir_branch_is_executed_without_touching_repo_fs(monkeypatch
     monkeypatch.setattr(logging, "StreamHandler", fake_stream_handler)
     monkeypatch.setattr(logging, "FileHandler", fake_file_handler)
 
-    adc = AdcLogger(file="default_path_case.py", stream_level=logging.INFO, log_dir=None)
+    adc = AdcLogger(
+        file="default_path_case.py", stream_level=logging.INFO, log_dir=None
+    )
 
     # 기본 경로 분기에서 makedirs가 호출되어야 함
     assert len(created_dirs) == 1

@@ -7,12 +7,13 @@ from kspec_adc_controller.adc_calc_angle import ADCCalc
 
 
 class DummyLogger:
-    """테스트용 최소 logger (info/debug/error 호출만 있으면 됨)"""
+    """테스트용 최소 logger"""
 
     def __init__(self):
         self.infos = []
         self.debugs = []
         self.errors = []
+        self.warnings = []
 
     def info(self, msg):
         self.infos.append(msg)
@@ -23,6 +24,9 @@ class DummyLogger:
     def error(self, msg):
         self.errors.append(msg)
 
+    def warning(self, msg):
+        self.warnings.append(msg)
+
 
 @pytest.fixture
 def logger():
@@ -32,8 +36,7 @@ def logger():
 @pytest.fixture
 def lookup_csv(tmp_path: Path) -> str:
     """
-    간단한 lookup table 생성.
-    za, adc 를 선형으로 만들어서(예: adc = 2*za) 보간 결과를 쉽게 검증.
+    간단 lookup table 생성: adc = 2*za
     """
     p = tmp_path / "ADC_lookup.csv"
     p.write_text(
@@ -43,18 +46,17 @@ def lookup_csv(tmp_path: Path) -> str:
     return str(p)
 
 
+# -------------------------
+# create_interp_func / init
+# -------------------------
 @pytest.mark.parametrize("method", ["pchip", "cubic", "akima"])
 def test_create_interp_func_success(method, logger, lookup_csv):
     adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method=method)
 
-    # min/max 설정 확인
     assert adc.za_min == 0
     assert adc.za_max == 30
-
-    # 보간 함수 생성 확인
     assert hasattr(adc, "fn_za_adc")
 
-    # 로그가 남았는지(필수는 아니지만 의도 확인)
     assert any("Lookup table found" in m for m in logger.infos)
     assert any(f"using {method}" in m for m in logger.infos)
 
@@ -75,7 +77,9 @@ def test_create_interp_func_invalid_method_raises(logger, lookup_csv):
 
 
 def test_create_interp_func_bad_csv_raises(logger, tmp_path):
-    # 컬럼이 2개가 아니거나, slicing이 깨지게 만들어 ValueError 유도
+    """
+    genfromtxt는 읽기는 하지만, 2D slicing이 깨지게 만들어 ValueError 유도
+    """
     p = tmp_path / "bad.csv"
     p.write_text("0\n1\n2\n", encoding="utf-8")
 
@@ -85,11 +89,35 @@ def test_create_interp_func_bad_csv_raises(logger, tmp_path):
     assert any("Failed to read lookup table" in m for m in logger.errors)
 
 
+def test_create_interp_func_genfromtxt_failure_raises(logger, lookup_csv, monkeypatch):
+    """
+    실제 코드는 np.genfromtxt를 사용하므로, genfromtxt를 강제로 터뜨려 예외 경로 커버.
+    """
+    import kspec_adc_controller.adc_calc_angle as mod
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("read fail")
+
+    monkeypatch.setattr(mod.np, "genfromtxt", boom)
+
+    with pytest.raises(ValueError):
+        ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+
+    assert any("Failed to read lookup table" in m for m in logger.errors)
+
+
+# -------------------------
+# calc_from_za
+# -------------------------
 def test_calc_from_za_scalar_in_bounds(logger, lookup_csv):
     adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
     out = adc.calc_from_za(15.0)
+    assert float(out) == pytest.approx(30.0, abs=1e-6)
 
-    # 입력 데이터가 adc=2*za 형태이므로 15 -> 약 30 근처가 나와야 함(보간 오차 고려)
+
+def test_calc_from_za_scalar_int_in_bounds(logger, lookup_csv):
+    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+    out = adc.calc_from_za(15)
     assert float(out) == pytest.approx(30.0, abs=1e-6)
 
 
@@ -123,13 +151,14 @@ def test_calc_from_za_invalid_type_raises(logger, lookup_csv):
     adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
 
     with pytest.raises(TypeError):
-        adc.calc_from_za(
-            [0, 1, 2]
-        )  # list는 min/max 메서드가 없어서 TypeError 경로로 감
+        adc.calc_from_za([0, 1, 2])  # list
 
     assert any("Invalid type" in m for m in logger.errors)
 
 
+# -------------------------
+# degree_to_count
+# -------------------------
 @pytest.mark.parametrize(
     "degree, expected_count",
     [
@@ -137,12 +166,28 @@ def test_calc_from_za_invalid_type_raises(logger, lookup_csv):
         (360, 16200),
         (180, 8100),
         (1, int(16200 / 360)),
+        (1.0, int(16200 / 360)),
+        (-0.1, int(-0.1 * (16200 / 360))),  # ✅ 실제 코드는 음수도 그대로 변환됨
+        (360.1, int(360.1 * (16200 / 360))),  # ✅ 360 초과도 그대로 변환됨
     ],
 )
-def test_degree_to_count(logger, lookup_csv, degree, expected_count):
+def test_degree_to_count_returns_int_and_logs(
+    logger, lookup_csv, degree, expected_count
+):
     adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
     out = adc.degree_to_count(degree)
 
     assert isinstance(out, int)
     assert out == expected_count
     assert any("Converted" in m for m in logger.debugs)
+
+
+def test_degree_to_count_non_numeric_raises_type_error(logger, lookup_csv):
+    """
+    degree_to_count는 타입 체크가 없어서,
+    '90' 같은 문자열 입력은 내부 곱셈에서 TypeError가 남.
+    """
+    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+
+    with pytest.raises(TypeError):
+        adc.degree_to_count("90")
