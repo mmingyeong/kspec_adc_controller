@@ -10,10 +10,17 @@ class DummyLogger:
         self.warnings = []
         self.errors = []
 
-    def info(self, msg): self.infos.append(msg)
-    def debug(self, msg): self.debugs.append(msg)
-    def warning(self, msg): self.warnings.append(msg)
-    def error(self, msg): self.errors.append(msg)
+    def info(self, msg):
+        self.infos.append(msg)
+
+    def debug(self, msg):
+        self.debugs.append(msg)
+
+    def warning(self, msg):
+        self.warnings.append(msg)
+
+    def error(self, msg):
+        self.errors.append(msg)
 
 
 class FakeController:
@@ -128,6 +135,7 @@ def test_connect_success(actions):
 def test_connect_error_returns_error(monkeypatch, actions):
     def boom():
         raise RuntimeError("nope")
+
     monkeypatch.setattr(actions.controller, "connect", boom)
 
     res = actions.connect()
@@ -146,6 +154,7 @@ def test_status_success(actions):
 def test_status_error(monkeypatch, actions):
     def boom(_motor):
         raise ValueError("bad")
+
     monkeypatch.setattr(actions.controller, "device_state", boom)
 
     res = actions.status(1)
@@ -192,6 +201,7 @@ async def test_move_single_motor(actions):
 async def test_move_error(monkeypatch, actions):
     def boom(*_args, **_kwargs):
         raise RuntimeError("move fail")
+
     monkeypatch.setattr(actions.controller, "move_motor", boom)
 
     res = await actions.move(1, pos_count=10, vel_set=1)
@@ -232,7 +242,9 @@ async def test_activate_caps_velocity_and_uses_calculator(actions):
 
     assert res["status"] == "success"
     assert actions.calculator.calc_from_za_calls == [12.3]
-    assert actions.calculator.degree_to_count_calls == [10.0]  # FakeCalc.calc_from_za returns 10.0
+    assert actions.calculator.degree_to_count_calls == [
+        10.0
+    ]  # FakeCalc.calc_from_za returns 10.0
 
     # move_motor은 motor1, motor2 모두 -pos(= -100), vel=5로 호출돼야 함
     assert (1, -100, 5) in actions.controller.move_motor_calls
@@ -254,6 +266,7 @@ async def test_activate_negative_velocity_sets_default_1(actions):
 async def test_activate_calc_error_returns_error(monkeypatch, actions):
     def boom(_za):
         raise ValueError("calc fail")
+
     monkeypatch.setattr(actions.calculator, "calc_from_za", boom)
 
     res = await actions.activate(za=5.0, vel_set=1)

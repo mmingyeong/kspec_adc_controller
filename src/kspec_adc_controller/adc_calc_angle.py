@@ -121,11 +121,15 @@ class ADCCalc:
         """
         if isinstance(za, (int, float)):  # For single values
             if za < self.za_min or za > self.za_max:
-                self.logger.error(f"Input zenith angle {za} is out of bounds ({self.za_min}, {self.za_max})")
+                self.logger.error(
+                    f"Input zenith angle {za} is out of bounds ({self.za_min}, {self.za_max})"
+                )
                 raise ValueError(f"Input zenith angle {za} is out of bounds.")
         elif hasattr(za, "min") and hasattr(za, "max"):  # For numpy arrays, etc.
             if za.min() < self.za_min or za.max() > self.za_max:
-                self.logger.error(f"Input zenith angle array is out of bounds ({self.za_min}, {self.za_max})")
+                self.logger.error(
+                    f"Input zenith angle array is out of bounds ({self.za_min}, {self.za_max})"
+                )
                 raise ValueError("Input zenith angle array is out of bounds.")
         else:
             self.logger.error(f"Invalid type for zenith angle: {type(za)}")

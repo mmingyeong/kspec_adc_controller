@@ -8,6 +8,7 @@ from kspec_adc_controller.adc_calc_angle import ADCCalc
 
 class DummyLogger:
     """테스트용 최소 logger (info/debug/error 호출만 있으면 됨)"""
+
     def __init__(self):
         self.infos = []
         self.debugs = []
@@ -36,11 +37,7 @@ def lookup_csv(tmp_path: Path) -> str:
     """
     p = tmp_path / "ADC_lookup.csv"
     p.write_text(
-        "# za(deg), adc(deg)\n"
-        "0,0\n"
-        "10,20\n"
-        "20,40\n"
-        "30,60\n",
+        "# za(deg), adc(deg)\n0,0\n10,20\n20,40\n30,60\n",
         encoding="utf-8",
     )
     return str(p)
@@ -126,7 +123,9 @@ def test_calc_from_za_invalid_type_raises(logger, lookup_csv):
     adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
 
     with pytest.raises(TypeError):
-        adc.calc_from_za([0, 1, 2])  # list는 min/max 메서드가 없어서 TypeError 경로로 감
+        adc.calc_from_za(
+            [0, 1, 2]
+        )  # list는 min/max 메서드가 없어서 TypeError 경로로 감
 
     assert any("Invalid type" in m for m in logger.errors)
 

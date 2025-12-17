@@ -53,6 +53,7 @@ def _ensure_fake_nanolib_if_missing() -> None:
         class BusHardwareOptions:
             def __init__(self):
                 self.opts = []
+
             def addOption(self, name, value):
                 self.opts.append((name, value))
 
@@ -78,6 +79,7 @@ _ensure_fake_nanolib_if_missing()
 def reset_adc_logger_registry():
     # AdcLogger는 class-level registry(_initialized_loggers)를 쓰므로 테스트 간 간섭 방지
     from kspec_adc_controller.adc_logger import AdcLogger
+
     AdcLogger._initialized_loggers.clear()
     yield
     AdcLogger._initialized_loggers.clear()

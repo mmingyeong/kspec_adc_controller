@@ -12,6 +12,7 @@ from typing import Set, Optional
 
 __all__ = ["AdcLogger"]
 
+
 class AdcLogger:
     """
     A custom logging system for the ADC project, modeled after GFALogger.
@@ -30,10 +31,7 @@ class AdcLogger:
     _initialized_loggers: Set[str] = set()
 
     def __init__(
-        self,
-        file: str,
-        stream_level: int = logging.INFO,
-        log_dir: Optional[str] = None
+        self, file: str, stream_level: int = logging.INFO, log_dir: Optional[str] = None
     ) -> None:
         """
         Initialize a logger with stream and file handlers.

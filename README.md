@@ -1,48 +1,39 @@
-
 # KSPEC ADC Controller
 
-The `kspec_adc_controller` is a Python-based application designed to interface with the K-SPEC ADC, enabling precise atmospheric dispersion correction during KSPEC observations. This tool is designed for astronomers and engineers working with the KSPEC instrument.
+[![codecov](https://codecov.io/github/mmingyeong/kspec_adc_controller/graph/badge.svg?token=YOFIOHG94E)](https://codecov.io/github/mmingyeong/kspec_adc_controller)
+[![tests](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/tests.yml/badge.svg)](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/tests.yml)
+[![ruff-lint](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/ruff-lint.yml/badge.svg)](https://github.com/mmingyeong/kspec_adc_controller/actions/workflows/ruff-lint.yml)
+![python>=3.10](https://img.shields.io/badge/python-%E2%89%A53.10-blue)
 
-## Features
+## Overview
 
-### Atmospheric Dispersion Correction
-The K-SPEC ADC corrects for atmospheric dispersion during astronomical observations. By controlling two prism motors, the ADC performs variable counter-dispersion to compensate for dispersion caused by observing at different zenith angles (Wehbe et al., 2019).
+`kspec_adc_controller` is a Python-based control software for the **K-SPEC Atmospheric Dispersion Corrector (ADC)**.  
+It provides remote, real-time control of the ADC system, which compensates for atmospheric dispersion during spectroscopic observations by driving a pair of counter-rotating wedge prism motors.
 
-### Key Functions
-- **`Activate()`**: Engages the ADC system, allowing dynamic adjustments during observations.
+The software is designed to operate as part of the **K-SPEC Instrument Control System (ICS)**, translating telescope metadata (e.g., zenith distance) into precise prism motor setpoints and executing coordinated motor commands with logging and safety checks.
 
-## Installation
+## Key Capabilities
 
-To install the `kspec_adc_controller`, clone the repository and install the required dependencies:
+- **Atmospheric dispersion correction** using two counter-rotating prism motors
+- **Zenith-angle–based prism angle computation** via precomputed lookup tables
+- **Asynchronous motor control** for non-blocking operations
+- **Initialization and homing procedures** for repeatable zero-point calibration
+- **Status monitoring and diagnostics** with structured logging
+- **Fault handling** for communication and motion errors
 
-```bash
-git clone https://github.com/mmingyeong/kspec_adc_controller.git
-cd kspec_adc_controller
-pip install -r requirements.txt
-```
+## Software Structure
 
-## Dependencies
+The control system is organized into three main layers:
 
-- Python 3.6 or higher
-- [Nanotec's NanoLib Python library](https://www.nanotec.com/eu/en/products/9985-nanolib)  
-  Ensure that the NanoLib library is installed and properly configured to facilitate communication with the ADC hardware.
-- Compatible hardware: K-SPEC ADC and prism motors system.
+- **`AdcActions`**  
+  ICS-facing command interface that validates inputs, orchestrates operations, and returns standardized responses.
 
-## Usage Example
+- **`AdcController`**  
+  Core hardware control layer responsible for device discovery, connection management, motor motion, homing, parking, and safety handling.
 
-Here is a basic example of using the Actions class for controlling the ADC:
+- **`ADCCalc` / `AdcLogger`**  
+  Utility modules for prism-angle computation (with multiple interpolation methods) and consistent system logging.
 
-```python
-from kspec_adc_controller import AdcActions
+## Intended Use
 
-# Initialize the Actions class
-actions = AdcActions()
-
-# Activate the ADC for dispersion correction
-zenith_angle = 10
-await actions.activate(zenith_angle)
-```
-
-## References
-
-- Wehbe, C., et al. (2019). *Title of the Reference*. Journal Name, Volume(Issue), Page Numbers. DOI/Link.
+This package is intended for astronomers and engineers operating the K-SPEC instrument, and for development, testing, and integration of ADC control logic within the K-SPEC software ecosystem.
