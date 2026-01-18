@@ -315,24 +315,6 @@ class AdcActions:
     async def homing(self, homing_vel=1):
         """
         Perform a homing operation with the motor controller.
-
-        The homing operation attempts to move the motor to its home position. This is usually a predefined
-        starting point or a limit switch where the motor is considered to be at its 'home' position.
-
-        Parameters
-        ----------
-        homing_vel : int, optional
-            The velocity at which to move the motors (in RPM). Defaults to 1.
-            Maximum allowed velocity is 5 RPM. If a value greater than 5 is provided,
-            it will be automatically capped at 5 RPM.
-            If a negative value is provided, it will be reset to the default value of 1 RPM.
-
-        Returns
-        -------
-        dict
-            A JSON-like dictionary with the operation's status. Contains:
-            - "status": "success" if the homing operation was successful, "error" if it failed.
-            - "message": A string explaining the failure, only present if "status" is "error".
         """
 
         max_velocity = 5
@@ -357,11 +339,30 @@ class AdcActions:
         try:
             self.logger.debug("Calling homing method on controller.")
             await self.controller.homing(vel)
+
+            state = self.controller.device_state(0)
+
+            motor1_pos = state["motor1"]["position_state"]
+            motor2_pos = state["motor2"]["position_state"]
+
+            # 🚨 position range check (180 ~ 270)
+            if not (180 < motor1_pos < 270 and 180 < motor2_pos < 270):
+                error_msg = (
+                    f"Motor position out of allowed range. "
+                    f"motor1: {motor1_pos}, motor2: {motor2_pos}"
+                )
+                self.logger.error(error_msg)
+                return self._generate_response("error", error_msg)
+
+
             self.logger.info("Homing completed successfully.")
-            return self._generate_response("success", "Homing completed successfully.")
+            return self._generate_response("success", "Homing completed successfully.", motor_1=motor1_pos, motor_2=motor2_pos)
+
+
         except Exception as e:
             self.logger.error(f"Error in homing operation: {str(e)}")
             return self._generate_response("error", str(e))
+
 
     async def parking(self, parking_vel=1):
         """

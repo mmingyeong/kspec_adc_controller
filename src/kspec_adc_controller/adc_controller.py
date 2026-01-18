@@ -442,8 +442,8 @@ class AdcController:
             Exception: If homing has not been completed before parking.
             Exception: If an error occurs while moving the motors to the parking position.
         """
-        parking_offset_motor1 = -500
-        parking_offset_motor2 = -500
+        parking_offset_motor1 = -225 # 225counts, 5 degree, 
+        parking_offset_motor2 = -225
 
         if not self.home_position:
             self.logger.error("Parking must be performed after homing.")
