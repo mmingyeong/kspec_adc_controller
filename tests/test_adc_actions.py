@@ -153,9 +153,31 @@ def actions_module(monkeypatch):
     mod = importlib.import_module("kspec_adc_controller.adc_actions")
     mod = importlib.reload(mod)
 
+    # ✅ AdcActions는 AdcLogger(__file__) 를 부르므로 그대로 DummyLogger 반환
     monkeypatch.setattr(mod, "AdcLogger", lambda *_args, **_kwargs: DummyLogger())
-    monkeypatch.setattr(mod, "AdcController", lambda logger: FakeController(logger))
-    monkeypatch.setattr(mod, "ADCCalc", lambda logger: FakeCalc(logger))
+
+    # ✅ AdcActions는 AdcController() / ADCCalc() 를 '인자 없이' 호출함
+    #    따라서 logger 인자를 optional로 받아야 함.
+    def _fake_controller_ctor(*_args, **_kwargs):
+        # AdcActions가 넘기는 인자는 현재 없음. 그래도 안전하게 처리.
+        logger = _kwargs.get("logger") if "logger" in _kwargs else None
+        if logger is None and _args:
+            # 혹시 (logger,) 로 들어오면 첫 인자를 logger로 간주
+            logger = _args[0]
+        if logger is None:
+            logger = DummyLogger()
+        return FakeController(logger)
+
+    def _fake_calc_ctor(*_args, **_kwargs):
+        logger = _kwargs.get("logger") if "logger" in _kwargs else None
+        if logger is None and _args:
+            logger = _args[0]
+        if logger is None:
+            logger = DummyLogger()
+        return FakeCalc(logger)
+
+    monkeypatch.setattr(mod, "AdcController", _fake_controller_ctor)
+    monkeypatch.setattr(mod, "ADCCalc", _fake_calc_ctor)
 
     return mod
 
@@ -184,7 +206,8 @@ def test_init_find_devices_raises_propagates(actions_module, monkeypatch):
     ctrl = FakeController(DummyLogger())
     ctrl.find_devices_raises = RuntimeError("find fail")
 
-    monkeypatch.setattr(actions_module, "AdcController", lambda logger: ctrl)
+    # ✅ AdcActions는 AdcController() 로 부르므로 인자 없이 호출되는 ctor로 맞춰야 함
+    monkeypatch.setattr(actions_module, "AdcController", lambda *_a, **_kw: ctrl)
 
     with pytest.raises(RuntimeError):
         actions_module.AdcActions()
@@ -347,7 +370,6 @@ async def test_stop_invalid_motor_id(actions):
 # -------------------------
 @pytest.mark.asyncio
 async def test_activate_caps_velocity_and_uses_calculator(actions):
-    # vel_set=99 -> 5로 cap
     res = await actions.activate(za=12.3, vel_set=99)
 
     assert res["status"] == "success"
@@ -380,10 +402,6 @@ async def test_activate_calc_error_returns_error(actions):
 
 @pytest.mark.asyncio
 async def test_activate_one_motor_fails_returns_error(actions):
-    """
-    activate()는 gather(return_exceptions=True)라서 한쪽 모터만 실패하면
-    results에 Exception이 들어오고 error response로 리턴해야 함.
-    """
     actions.controller.move_motor_raises_for.add(2)
 
     res = await actions.activate(za=5.0, vel_set=1)
@@ -394,18 +412,11 @@ async def test_activate_one_motor_fails_returns_error(actions):
 
 @pytest.mark.asyncio
 async def test_activate_outer_except_branch_is_covered(monkeypatch, actions_module):
-    """
-    activate()의 바깥 try/except(모터 실행 부분)에서,
-    예기치 못한 예외가 발생할 때의 except 분기를 커버.
-    (asyncio.gather 자체를 강제로 터뜨림)
-    """
     actions = actions_module.AdcActions()
 
-    # 계산 파트는 성공하게 두고, gather가 터지게 만든다.
     orig_gather = asyncio.gather
 
     async def boom_gather(*aws, **_kwargs):
-        # 생성된 to_thread 코루틴들을 await해서 warning 방지
         for aw in aws:
             try:
                 await aw

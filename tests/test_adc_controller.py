@@ -247,6 +247,25 @@ def logger():
 
 
 @pytest.fixture
+def controller_factory(adc_controller_module, logger, monkeypatch):
+    """
+    AdcController는 내부에서 self.logger = AdcLogger(__file__) 로 logger를 생성한다.
+    테스트에서는 AdcLogger를 DummyLogger로 치환하여, logger를 외부에서 주입하지 않아도
+    로그 assert를 그대로 유지할 수 있게 한다.
+    """
+    mod, fake_accessor = adc_controller_module
+
+    # mod 안의 AdcLogger 심볼을 DummyLogger를 돌려주는 함수로 치환
+    monkeypatch.setattr(mod, "AdcLogger", lambda *_a, **_kw: logger)
+
+    def _make(**kwargs):
+        # 소스 시그니처: AdcController(config: str = None)
+        return mod.AdcController(**kwargs)
+
+    return mod, fake_accessor, _make
+
+
+@pytest.fixture
 def config_file(tmp_path: Path) -> str:
     p = tmp_path / "adc_config.json"
     p.write_text(json.dumps({"selected_bus_index": 0}), encoding="utf-8")
@@ -257,10 +276,10 @@ def config_file(tmp_path: Path) -> str:
 # Core tests (existing + extended)
 # -------------------------
 def test_init_loads_selected_bus_index_from_valid_json(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     assert c.selected_bus_index == 0
     assert c.CONFIG_FILE == config_file
@@ -268,33 +287,33 @@ def test_init_loads_selected_bus_index_from_valid_json(
 
 
 def test_load_selected_bus_index_missing_file_defaults_to_1(
-    adc_controller_module, logger, tmp_path
+    controller_factory, logger, tmp_path
 ):
-    mod, _fake_accessor = adc_controller_module
+    mod, _fake_accessor, make_controller = controller_factory
     missing = str(tmp_path / "missing.json")
 
-    c = mod.AdcController(logger=logger, config=missing)
+    c = make_controller(config=missing)
     assert c.selected_bus_index == 1
     assert any("not found" in m for m in logger.warnings)
 
 
 def test_load_selected_bus_index_invalid_json_defaults_to_1(
-    adc_controller_module, logger, tmp_path
+    controller_factory, logger, tmp_path
 ):
-    mod, _fake_accessor = adc_controller_module
+    mod, _fake_accessor, make_controller = controller_factory
     bad = tmp_path / "bad.json"
     bad.write_text("{not-json", encoding="utf-8")
 
-    c = mod.AdcController(logger=logger, config=str(bad))
+    c = make_controller(config=str(bad))
     assert c.selected_bus_index == 1
     assert any("Error reading configuration file" in m for m in logger.errors)
 
 
 def test_connect_invalid_motor_number_raises_and_logs_exception(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     with pytest.raises(ValueError):
         c.connect(motor_number=3)
@@ -303,10 +322,10 @@ def test_connect_invalid_motor_number_raises_and_logs_exception(
 
 
 def test_connect_all_motors_success_updates_state(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[2]["handle"] = "H2"
@@ -319,9 +338,9 @@ def test_connect_all_motors_success_updates_state(
     assert "H2" in fake_accessor.connected_handles
 
 
-def test_connect_error_raises_and_logs(adc_controller_module, logger, config_file):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_connect_error_raises_and_logs(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = False
@@ -335,10 +354,10 @@ def test_connect_error_raises_and_logs(adc_controller_module, logger, config_fil
 
 
 def test_disconnect_motor_success_updates_state(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
@@ -352,10 +371,10 @@ def test_disconnect_motor_success_updates_state(
 
 
 def test_disconnect_when_not_connected_logs_info(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = False
@@ -364,9 +383,9 @@ def test_disconnect_when_not_connected_logs_info(
     assert any("was not connected" in m for m in logger.infos)
 
 
-def test_disconnect_error_raises_and_logs(adc_controller_module, logger, config_file):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_disconnect_error_raises_and_logs(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
@@ -380,10 +399,10 @@ def test_disconnect_error_raises_and_logs(adc_controller_module, logger, config_
 
 
 def test_connect_when_already_connected_does_not_call_error(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
@@ -394,10 +413,10 @@ def test_connect_when_already_connected_does_not_call_error(
 
 
 def test_read_motor_position_requires_connected(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = False
@@ -406,9 +425,9 @@ def test_read_motor_position_requires_connected(
         c.read_motor_position(1)
 
 
-def test_read_motor_position_success(adc_controller_module, logger, config_file):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_read_motor_position_success(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
@@ -417,11 +436,9 @@ def test_read_motor_position_success(adc_controller_module, logger, config_file)
     assert c.read_motor_position(1) == 12345
 
 
-def test_read_motor_position_read_error_raises(
-    adc_controller_module, logger, config_file
-):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_read_motor_position_read_error_raises(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
@@ -434,10 +451,10 @@ def test_read_motor_position_read_error_raises(
 
 
 def test_device_state_returns_position_and_connection_state(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[2]["handle"] = "H2"
@@ -458,10 +475,10 @@ def test_device_state_returns_position_and_connection_state(
 
 
 def test_device_state_invalid_motor_number_raises(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     with pytest.raises(ValueError):
         c.device_state(99)
@@ -470,9 +487,9 @@ def test_device_state_invalid_motor_number_raises(
 # -------------------------
 # find_devices coverage (success + failure branches)
 # -------------------------
-def test_find_devices_registers_handles(adc_controller_module, logger, config_file):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_find_devices_registers_handles(controller_factory, logger, config_file):
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.selected_bus_index = 0
     c.find_devices()
@@ -483,19 +500,19 @@ def test_find_devices_registers_handles(adc_controller_module, logger, config_fi
 
 
 def test_find_devices_list_bus_has_error_raises(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     fake_accessor.list_bus_error = "LIST_BUS_FAIL"
     with pytest.raises(Exception):
         c.find_devices()
 
 
-def test_find_devices_no_bus_ids_raises(adc_controller_module, logger, config_file):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_find_devices_no_bus_ids_raises(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     fake_accessor.bus_ids = _FakeSizeList([])
     with pytest.raises(Exception) as e:
@@ -503,29 +520,27 @@ def test_find_devices_no_bus_ids_raises(adc_controller_module, logger, config_fi
     assert "No bus hardware IDs found" in str(e.value)
 
 
-def test_find_devices_open_bus_error_raises(adc_controller_module, logger, config_file):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_find_devices_open_bus_error_raises(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     fake_accessor.open_bus_error = "OPEN_BUS_FAIL"
     with pytest.raises(Exception):
         c.find_devices()
 
 
-def test_find_devices_scan_error_raises(adc_controller_module, logger, config_file):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_find_devices_scan_error_raises(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     fake_accessor.scan_error = "SCAN_FAIL"
     with pytest.raises(Exception):
         c.find_devices()
 
 
-def test_find_devices_no_devices_found_raises(
-    adc_controller_module, logger, config_file
-):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_find_devices_no_devices_found_raises(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     fake_accessor.scan_device_ids = _FakeSizeList([])
     with pytest.raises(Exception) as e:
@@ -533,11 +548,9 @@ def test_find_devices_no_devices_found_raises(
     assert "No devices found during scan" in str(e.value)
 
 
-def test_find_devices_add_device_error_raises(
-    adc_controller_module, logger, config_file
-):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_find_devices_add_device_error_raises(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     fake_accessor.add_device_error = True
     with pytest.raises(Exception):
@@ -547,17 +560,17 @@ def test_find_devices_add_device_error_raises(
 # -------------------------
 # close() coverage
 # -------------------------
-def test_close_success(adc_controller_module, logger, config_file):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_close_success(controller_factory, logger, config_file):
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
     c.adc_motor_id = "BUS0"
     c.close()
     assert any("Bus hardware closed successfully" in m for m in logger.infos)
 
 
-def test_close_has_error_raises(adc_controller_module, logger, config_file):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_close_has_error_raises(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
     c.adc_motor_id = "BUS0"
     fake_accessor.close_error = "CLOSE_FAIL"
     with pytest.raises(Exception):
@@ -568,10 +581,10 @@ def test_close_has_error_raises(adc_controller_module, logger, config_file):
 # move_motor coverage (vel None/default, loop, failure)
 # -------------------------
 def test_move_motor_default_velocity_when_vel_none(
-    adc_controller_module, logger, config_file, monkeypatch
+    controller_factory, logger, config_file, monkeypatch
 ):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
@@ -606,10 +619,10 @@ def test_move_motor_default_velocity_when_vel_none(
 
 
 def test_move_motor_write_raises_logs_and_raises(
-    adc_controller_module, logger, config_file, monkeypatch
+    controller_factory, logger, config_file, monkeypatch
 ):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
@@ -626,9 +639,9 @@ def test_move_motor_write_raises_logs_and_raises(
 # -------------------------
 # stop_motor coverage (handle None / read fail)
 # -------------------------
-def test_stop_motor_handle_none_raises(adc_controller_module, logger, config_file):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_stop_motor_handle_none_raises(controller_factory, logger, config_file):
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = None
     c.devices[1]["connected"] = True
@@ -639,16 +652,15 @@ def test_stop_motor_handle_none_raises(adc_controller_module, logger, config_fil
     assert any("Device not found" in m for m in logger.errors)
 
 
-def test_stop_motor_success_when_halt_bit_set(
-    adc_controller_module, logger, config_file
-):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_stop_motor_success_when_halt_bit_set(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
 
-    fake_accessor._status_sequence = [0x8000]
+    # stop_motor()는 STOP_CONFIRMED = 0x0040(bit6)로 성공 판단
+    fake_accessor._status_sequence = [0x0040]
     fake_accessor._status_i = 0
 
     res = c.stop_motor(1)
@@ -657,10 +669,10 @@ def test_stop_motor_success_when_halt_bit_set(
 
 
 def test_stop_motor_failed_when_halt_bit_not_set(
-    adc_controller_module, logger, config_file
+    controller_factory, logger, config_file
 ):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
@@ -673,9 +685,9 @@ def test_stop_motor_failed_when_halt_bit_not_set(
     assert res["error_code"] == 0x0001
 
 
-def test_stop_motor_read_error_raises(adc_controller_module, logger, config_file):
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+def test_stop_motor_read_error_raises(controller_factory, logger, config_file):
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[1]["connected"] = True
@@ -691,9 +703,9 @@ def test_stop_motor_read_error_raises(adc_controller_module, logger, config_file
 # parking/zeroing/homing: wrap-around branches + threshold branches
 # -------------------------
 @pytest.mark.asyncio
-async def test_parking_requires_homing(adc_controller_module, logger, config_file):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+async def test_parking_requires_homing(controller_factory, logger, config_file):
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.home_position = False
     with pytest.raises(Exception):
@@ -703,9 +715,9 @@ async def test_parking_requires_homing(adc_controller_module, logger, config_fil
 
 
 @pytest.mark.asyncio
-async def test_zeroing_requires_homing(adc_controller_module, logger, config_file):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+async def test_zeroing_requires_homing(controller_factory, logger, config_file):
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.home_position = False
     with pytest.raises(Exception):
@@ -716,26 +728,29 @@ async def test_zeroing_requires_homing(adc_controller_module, logger, config_fil
 
 @pytest.mark.asyncio
 async def test_parking_threshold_no_move(
-    adc_controller_module, logger, config_file, monkeypatch
+    controller_factory, logger, config_file, monkeypatch
 ):
     """
     target_pos_1/2가 threshold(10)보다 작으면 move_motor를 호출하지 않는 분기.
-    (parking_offset = -225 기준)
+
+    소스 parking_offset:
+      motor1: -250
+      motor2: -225
     """
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.home_position = True
     c.home_position_motor1 = 1000
     c.home_position_motor2 = 2000
 
-    # parking_offset = -225
-    # home + offset => 775, 1775
-    # current_pos를 정확히 맞추면 target_pos = 0
+    # target positions:
+    # motor1: 1000 - 250 = 750
+    # motor2: 2000 - 225 = 1775
     monkeypatch.setattr(
         c,
         "read_motor_position",
-        lambda motor_id: 775 if motor_id == 1 else 1775,
+        lambda motor_id: 750 if motor_id == 1 else 1775,
     )
 
     called = {"move": 0}
@@ -753,16 +768,15 @@ async def test_parking_threshold_no_move(
 
 @pytest.mark.asyncio
 async def test_zeroing_threshold_no_move(
-    adc_controller_module, logger, config_file, monkeypatch
+    controller_factory, logger, config_file, monkeypatch
 ):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.home_position = True
     c.home_position_motor1 = 0
     c.home_position_motor2 = 0
 
-    # zero_offset 7635/1926, current_pos가 딱 target과 같아서 target_pos=0
     monkeypatch.setattr(
         c, "read_motor_position", lambda motor_id: 7635 if motor_id == 1 else 1926
     )
@@ -785,20 +799,17 @@ async def test_zeroing_threshold_no_move(
 @pytest.mark.parametrize(
     "p1,p2",
     [
-        (100, 200),  # both < 1e6
-        (100, 2_000_000),  # only p1 < 1e6
-        (2_000_000, 100),  # only p2 < 1e6
-        (2_000_000, 3_000_000),  # both >= 1e6
+        (100, 200),
+        (100, 2_000_000),
+        (2_000_000, 100),
+        (2_000_000, 3_000_000),
     ],
 )
 async def test_parking_wraparound_branches_call_move(
-    adc_controller_module, logger, config_file, monkeypatch, p1, p2
+    controller_factory, logger, config_file, monkeypatch, p1, p2
 ):
-    """
-    parking의 4개 wrap-around 분기 모두 타게 하고, move_motor가 호출되는지 확인.
-    """
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.home_position = True
     c.home_position_motor1 = 10_000
@@ -818,8 +829,7 @@ async def test_parking_wraparound_branches_call_move(
 
     await c.parking(parking_vel=3)
 
-    # threshold에 걸릴 확률이 낮도록 home/pos를 잡았으니 보통 2회 호출
-    assert len(calls) in (0, 2)  # 혹시 우연히 threshold에 걸리면 0일 수 있어도 허용
+    assert len(calls) in (0, 2)
 
 
 @pytest.mark.asyncio
@@ -833,10 +843,10 @@ async def test_parking_wraparound_branches_call_move(
     ],
 )
 async def test_zeroing_wraparound_branches_call_move(
-    adc_controller_module, logger, config_file, monkeypatch, p1, p2
+    controller_factory, logger, config_file, monkeypatch, p1, p2
 ):
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.home_position = True
     c.home_position_motor1 = 10_000
@@ -861,13 +871,10 @@ async def test_zeroing_wraparound_branches_call_move(
 
 @pytest.mark.asyncio
 async def test_homing_sets_home_positions_when_first_time_busstop(
-    adc_controller_module, logger, config_file, monkeypatch
+    controller_factory, logger, config_file, monkeypatch
 ):
-    """
-    home_position=False 상태에서 raw_val이 busstop=192면 find_home_position을 호출하지 않는 분기.
-    """
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[2]["handle"] = "H2"
@@ -904,13 +911,10 @@ async def test_homing_sets_home_positions_when_first_time_busstop(
     ],
 )
 async def test_homing_when_already_home_position_wraparound_moves(
-    adc_controller_module, logger, config_file, monkeypatch, p1, p2
+    controller_factory, logger, config_file, monkeypatch, p1, p2
 ):
-    """
-    home_position=True 분기에서 wrap-around 4분기 + move 호출을 커버.
-    """
-    mod, _fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, _fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     c.devices[2]["handle"] = "H2"
@@ -933,20 +937,15 @@ async def test_homing_when_already_home_position_wraparound_moves(
 
     await c.homing(homing_vel=1)
 
-    # threshold에 걸리면 0, 아니면 2
     assert len(calls) in (0, 2)
 
 
 @pytest.mark.asyncio
 async def test_find_home_position_timeout(
-    adc_controller_module, logger, config_file, monkeypatch
+    controller_factory, logger, config_file, monkeypatch
 ):
-    """
-    find_home_position에서 raw_value가 변하지 않으면 timeout.
-    time.time을 조작해서 빠르게 TimeoutError까지 가게 함.
-    """
-    mod, fake_accessor = adc_controller_module
-    c = mod.AdcController(logger=logger, config=config_file)
+    mod, fake_accessor, make_controller = controller_factory
+    c = make_controller(config=config_file)
 
     c.devices[1]["handle"] = "H1"
     fake_accessor.positions["H1"] = 123  # raw 값 고정
@@ -989,9 +988,7 @@ def test_scanbuscallback_prints_start_progress_finished(adc_controller_module, c
     cb = mod.ScanBusCallback()
 
     cb.callback(mod.Nanolib.BusScanInfo_Start, devicesFound=0, data=0)
-    cb.callback(
-        mod.Nanolib.BusScanInfo_Progress, devicesFound=0, data=0
-    )  # data even => "."
+    cb.callback(mod.Nanolib.BusScanInfo_Progress, devicesFound=0, data=0)
     cb.callback(mod.Nanolib.BusScanInfo_Finished, devicesFound=0, data=0)
 
     out = capsys.readouterr().out
@@ -1017,7 +1014,6 @@ def test_get_default_adc_config_path_success(
 ):
     mod, _fake_accessor = adc_controller_module
 
-    # __file__ 기준으로 etc/adc_config.json이 존재하도록 구성
     fake_script_dir = tmp_path / "src" / "kspec_adc_controller"
     etc_dir = fake_script_dir / "etc"
     etc_dir.mkdir(parents=True, exist_ok=True)

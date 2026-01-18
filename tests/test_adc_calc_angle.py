@@ -46,12 +46,29 @@ def lookup_csv(tmp_path: Path) -> str:
     return str(p)
 
 
+@pytest.fixture
+def adc_factory(logger, monkeypatch):
+    """
+    ADCCalc은 내부에서 self.logger = AdcLogger(__file__) 로 logger를 생성하므로,
+    테스트에서는 AdcLogger를 DummyLogger로 치환해 로그 검증이 가능하게 만든다.
+    """
+    import kspec_adc_controller.adc_calc_angle as mod
+
+    monkeypatch.setattr(mod, "AdcLogger", lambda *_a, **_kw: logger)
+
+    def _make(**kwargs):
+        # 소스 시그니처: ADCCalc(lookup_table=None, method="pchip")
+        return ADCCalc(**kwargs)
+
+    return _make
+
+
 # -------------------------
 # create_interp_func / init
 # -------------------------
 @pytest.mark.parametrize("method", ["pchip", "cubic", "akima"])
-def test_create_interp_func_success(method, logger, lookup_csv):
-    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method=method)
+def test_create_interp_func_success(method, logger, lookup_csv, adc_factory):
+    adc = adc_factory(lookup_table=lookup_csv, method=method)
 
     assert adc.za_min == 0
     assert adc.za_max == 30
@@ -61,22 +78,22 @@ def test_create_interp_func_success(method, logger, lookup_csv):
     assert any(f"using {method}" in m for m in logger.infos)
 
 
-def test_create_interp_func_missing_file_raises(logger, tmp_path):
+def test_create_interp_func_missing_file_raises(logger, tmp_path, adc_factory):
     missing = tmp_path / "nope.csv"
     with pytest.raises(FileNotFoundError):
-        ADCCalc(logger=logger, lookup_table=str(missing), method="pchip")
+        adc_factory(lookup_table=str(missing), method="pchip")
 
     assert any("Lookup table cannot be found" in m for m in logger.errors)
 
 
-def test_create_interp_func_invalid_method_raises(logger, lookup_csv):
+def test_create_interp_func_invalid_method_raises(logger, lookup_csv, adc_factory):
     with pytest.raises(ValueError):
-        ADCCalc(logger=logger, lookup_table=lookup_csv, method="invalid")
+        adc_factory(lookup_table=lookup_csv, method="invalid")
 
     assert any("Invalid interpolation method" in m for m in logger.errors)
 
 
-def test_create_interp_func_bad_csv_raises(logger, tmp_path):
+def test_create_interp_func_bad_csv_raises(logger, tmp_path, adc_factory):
     """
     genfromtxt는 읽기는 하지만, 2D slicing이 깨지게 만들어 ValueError 유도
     """
@@ -84,12 +101,14 @@ def test_create_interp_func_bad_csv_raises(logger, tmp_path):
     p.write_text("0\n1\n2\n", encoding="utf-8")
 
     with pytest.raises(ValueError):
-        ADCCalc(logger=logger, lookup_table=str(p), method="pchip")
+        adc_factory(lookup_table=str(p), method="pchip")
 
     assert any("Failed to read lookup table" in m for m in logger.errors)
 
 
-def test_create_interp_func_genfromtxt_failure_raises(logger, lookup_csv, monkeypatch):
+def test_create_interp_func_genfromtxt_failure_raises(
+    logger, lookup_csv, monkeypatch, adc_factory
+):
     """
     실제 코드는 np.genfromtxt를 사용하므로, genfromtxt를 강제로 터뜨려 예외 경로 커버.
     """
@@ -101,7 +120,7 @@ def test_create_interp_func_genfromtxt_failure_raises(logger, lookup_csv, monkey
     monkeypatch.setattr(mod.np, "genfromtxt", boom)
 
     with pytest.raises(ValueError):
-        ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+        adc_factory(lookup_table=lookup_csv, method="pchip")
 
     assert any("Failed to read lookup table" in m for m in logger.errors)
 
@@ -109,28 +128,28 @@ def test_create_interp_func_genfromtxt_failure_raises(logger, lookup_csv, monkey
 # -------------------------
 # calc_from_za
 # -------------------------
-def test_calc_from_za_scalar_in_bounds(logger, lookup_csv):
-    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+def test_calc_from_za_scalar_in_bounds(logger, lookup_csv, adc_factory):
+    adc = adc_factory(lookup_table=lookup_csv, method="pchip")
     out = adc.calc_from_za(15.0)
     assert float(out) == pytest.approx(30.0, abs=1e-6)
 
 
-def test_calc_from_za_scalar_int_in_bounds(logger, lookup_csv):
-    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+def test_calc_from_za_scalar_int_in_bounds(logger, lookup_csv, adc_factory):
+    adc = adc_factory(lookup_table=lookup_csv, method="pchip")
     out = adc.calc_from_za(15)
     assert float(out) == pytest.approx(30.0, abs=1e-6)
 
 
-def test_calc_from_za_scalar_out_of_bounds_raises(logger, lookup_csv):
-    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+def test_calc_from_za_scalar_out_of_bounds_raises(logger, lookup_csv, adc_factory):
+    adc = adc_factory(lookup_table=lookup_csv, method="pchip")
     with pytest.raises(ValueError):
         adc.calc_from_za(-1)
 
     assert any("out of bounds" in m for m in logger.errors)
 
 
-def test_calc_from_za_array_in_bounds(logger, lookup_csv):
-    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+def test_calc_from_za_array_in_bounds(logger, lookup_csv, adc_factory):
+    adc = adc_factory(lookup_table=lookup_csv, method="pchip")
     za = np.array([0.0, 5.0, 10.0, 20.0, 30.0])
     out = adc.calc_from_za(za)
 
@@ -138,8 +157,8 @@ def test_calc_from_za_array_in_bounds(logger, lookup_csv):
     assert np.allclose(out, expected, atol=1e-6)
 
 
-def test_calc_from_za_array_out_of_bounds_raises(logger, lookup_csv):
-    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+def test_calc_from_za_array_out_of_bounds_raises(logger, lookup_csv, adc_factory):
+    adc = adc_factory(lookup_table=lookup_csv, method="pchip")
     za = np.array([0.0, 31.0])  # max=30 초과
     with pytest.raises(ValueError):
         adc.calc_from_za(za)
@@ -147,8 +166,8 @@ def test_calc_from_za_array_out_of_bounds_raises(logger, lookup_csv):
     assert any("array is out of bounds" in m for m in logger.errors)
 
 
-def test_calc_from_za_invalid_type_raises(logger, lookup_csv):
-    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+def test_calc_from_za_invalid_type_raises(logger, lookup_csv, adc_factory):
+    adc = adc_factory(lookup_table=lookup_csv, method="pchip")
 
     with pytest.raises(TypeError):
         adc.calc_from_za([0, 1, 2])  # list
@@ -172,9 +191,9 @@ def test_calc_from_za_invalid_type_raises(logger, lookup_csv):
     ],
 )
 def test_degree_to_count_returns_int_and_logs(
-    logger, lookup_csv, degree, expected_count
+    logger, lookup_csv, degree, expected_count, adc_factory
 ):
-    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+    adc = adc_factory(lookup_table=lookup_csv, method="pchip")
     out = adc.degree_to_count(degree)
 
     assert isinstance(out, int)
@@ -182,12 +201,12 @@ def test_degree_to_count_returns_int_and_logs(
     assert any("Converted" in m for m in logger.debugs)
 
 
-def test_degree_to_count_non_numeric_raises_type_error(logger, lookup_csv):
+def test_degree_to_count_non_numeric_raises_type_error(logger, lookup_csv, adc_factory):
     """
     degree_to_count는 타입 체크가 없어서,
     '90' 같은 문자열 입력은 내부 곱셈에서 TypeError가 남.
     """
-    adc = ADCCalc(logger=logger, lookup_table=lookup_csv, method="pchip")
+    adc = adc_factory(lookup_table=lookup_csv, method="pchip")
 
     with pytest.raises(TypeError):
         adc.degree_to_count("90")
