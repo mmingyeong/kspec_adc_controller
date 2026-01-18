@@ -94,7 +94,6 @@ class FakeController:
         else:
             raise ValueError("Invalid motor number")
 
-
     def move_motor(self, motor_id, pos, vel):
         if motor_id in self.move_motor_raises_for:
             raise RuntimeError(f"move fail motor {motor_id}")
