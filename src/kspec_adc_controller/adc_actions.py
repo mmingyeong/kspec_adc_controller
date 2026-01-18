@@ -354,15 +354,17 @@ class AdcActions:
                 self.logger.error(error_msg)
                 return self._generate_response("error", error_msg)
 
-
             self.logger.info("Homing completed successfully.")
-            return self._generate_response("success", "Homing completed successfully.", motor_1=motor1_pos, motor_2=motor2_pos)
-
+            return self._generate_response(
+                "success",
+                "Homing completed successfully.",
+                motor_1=motor1_pos,
+                motor_2=motor2_pos,
+            )
 
         except Exception as e:
             self.logger.error(f"Error in homing operation: {str(e)}")
             return self._generate_response("error", str(e))
-
 
     async def parking(self, parking_vel=1):
         """

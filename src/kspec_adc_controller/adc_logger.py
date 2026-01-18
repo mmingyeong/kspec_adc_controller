@@ -24,7 +24,10 @@ class AdcLogger:
     _initialized_loggers: Set[str] = set()
 
     def __init__(
-        self, file: str, stream_level: int = logging.DEBUG, log_dir: Optional[str] = None
+        self,
+        file: str,
+        stream_level: int = logging.DEBUG,
+        log_dir: Optional[str] = None,
     ) -> None:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         if log_dir is None:

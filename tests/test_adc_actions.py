@@ -80,7 +80,20 @@ class FakeController:
         self.device_state_called.append(motor_num)
         if self.device_state_raises:
             raise self.device_state_raises
-        return {"motor": motor_num, "ok": True}
+
+        # AdcActions.homing()이 기대하는 형태로 리턴
+        if motor_num == 0:
+            return {
+                "motor1": {"position_state": 200, "connection_state": True},
+                "motor2": {"position_state": 200, "connection_state": True},
+            }
+        elif motor_num == 1:
+            return {"motor1": {"position_state": 200, "connection_state": True}}
+        elif motor_num == 2:
+            return {"motor2": {"position_state": 200, "connection_state": True}}
+        else:
+            raise ValueError("Invalid motor number")
+
 
     def move_motor(self, motor_id, pos, vel):
         if motor_id in self.move_motor_raises_for:
@@ -392,7 +405,13 @@ async def test_activate_outer_except_branch_is_covered(monkeypatch, actions_modu
     # 계산 파트는 성공하게 두고, gather가 터지게 만든다.
     orig_gather = asyncio.gather
 
-    async def boom_gather(*_args, **_kwargs):
+    async def boom_gather(*aws, **_kwargs):
+        # 생성된 to_thread 코루틴들을 await해서 warning 방지
+        for aw in aws:
+            try:
+                await aw
+            except Exception:
+                pass
         raise RuntimeError("gather blew up")
 
     monkeypatch.setattr(asyncio, "gather", boom_gather)

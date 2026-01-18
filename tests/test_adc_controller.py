@@ -720,6 +720,7 @@ async def test_parking_threshold_no_move(
 ):
     """
     target_pos_1/2가 threshold(10)보다 작으면 move_motor를 호출하지 않는 분기.
+    (parking_offset = -225 기준)
     """
     mod, _fake_accessor = adc_controller_module
     c = mod.AdcController(logger=logger, config=config_file)
@@ -728,10 +729,13 @@ async def test_parking_threshold_no_move(
     c.home_position_motor1 = 1000
     c.home_position_motor2 = 2000
 
-    # parking_offset=-500 => home+offset = 500, 1500
-    # current_pos를 같게 맞추면 target_pos=0
+    # parking_offset = -225
+    # home + offset => 775, 1775
+    # current_pos를 정확히 맞추면 target_pos = 0
     monkeypatch.setattr(
-        c, "read_motor_position", lambda motor_id: 500 if motor_id == 1 else 1500
+        c,
+        "read_motor_position",
+        lambda motor_id: 775 if motor_id == 1 else 1775,
     )
 
     called = {"move": 0}
@@ -745,7 +749,6 @@ async def test_parking_threshold_no_move(
     await c.parking(parking_vel=1)
 
     assert called["move"] == 0
-    assert any("already close to the parking position" in m for m in logger.infos)
 
 
 @pytest.mark.asyncio

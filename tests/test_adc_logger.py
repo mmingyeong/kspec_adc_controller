@@ -65,9 +65,9 @@ def test_prevents_duplicate_initialization_and_handler_duplication(tmp_path):
 
 def test_log_methods_include_filename_in_message(caplog, tmp_path):
     log_dir = tmp_path / "log"
-    adc = AdcLogger(
-        file="my_module.py", stream_level=logging.INFO, log_dir=str(log_dir)
-    )
+    adc = AdcLogger(file="my_module.py", stream_level=logging.INFO, log_dir=str(log_dir))
+
+    adc.logger.propagate = True  # <-- 테스트용
 
     with caplog.at_level(logging.DEBUG, logger=adc.logger.name):
         adc.info("hello")
@@ -75,10 +75,7 @@ def test_log_methods_include_filename_in_message(caplog, tmp_path):
         adc.warning("warn")
         adc.error("err")
 
-    # 메시지에 "(at my_module.py)"가 붙는지 확인
-    messages = [
-        rec.getMessage() for rec in caplog.records if rec.name == adc.logger.name
-    ]
+    messages = [rec.getMessage() for rec in caplog.records if rec.name == adc.logger.name]
     assert "hello (at my_module.py)" in messages
     assert "dbg (at my_module.py)" in messages
     assert "warn (at my_module.py)" in messages
