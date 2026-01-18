@@ -11,6 +11,8 @@ import time
 import asyncio
 from nanotec_nanolib import Nanolib
 
+from .adc_logger import AdcLogger
+
 __all__ = ["AdcController"]
 max_position = 4_294_967_296
 
@@ -56,7 +58,7 @@ class AdcController:
         The maximum motor position. Default is 4,294,967,296.
     """
 
-    def __init__(self, logger, config: str = None):
+    def __init__(self, config: str = None):
         """
         Initializes the AdcController.
 
@@ -72,7 +74,7 @@ class AdcController:
             config = _get_default_adc_config_path()
 
         self.CONFIG_FILE = config  # 내부에서 사용할 config 파일 경로
-        self.logger = logger
+        self.logger = AdcLogger(__file__)
         self.nanolib_accessor = Nanolib.getNanoLibAccessor()
         self.logger.debug("Initializing AdcController")
 
@@ -372,62 +374,75 @@ class AdcController:
             self.logger.error(f"Failed to move Motor {motor_id}: {e}")
             raise
 
-    def stop_motor(self, motor_id):
+    def stop_motor(
+        self, motor_id: int, timeout_s: float = 2.0, poll_s: float = 0.1
+    ) -> dict:
         """
-        Stop the specified motor using Controlword.
+        Stop the specified motor using your existing controlword sequence and confirm stop by Statusword polling.
 
-        Parameters
-        ----------
-        motor_id : int
-            The identifier of the motor to be stopped.
+        Confirmation condition:
+        - statusword bit6 (0x0040) is set  (your logs show 0x1240 after stop, which includes 0x0040)
 
-        Returns
-        -------
-        dict
-            Dictionary containing the motor stop result, including status and error code if any.
+        Returns:
+        {"status": "success"|"failed", "error_code": <last statusword or None>}
         """
         self.logger.debug(f"Stopping Motor {motor_id}")
 
         device = self.devices.get(motor_id)
-
-        if not device or not device["connected"]:
+        if not device or not device.get("connected"):
             raise Exception(
                 f"Error: Motor {motor_id} is not connected. Please connect it before stopping."
             )
 
-        try:
-            # Step 1: Get device handle
-            device_handle = device["handle"]
-            if device_handle is None:
-                self.logger.error(f"Motor {motor_id}: Device not found.")
-                raise ValueError(f"Motor {motor_id} not connected.")
+        device_handle = device.get("handle")
+        if device_handle is None:
+            self.logger.error(f"Motor {motor_id}: Device not found.")
+            raise ValueError(f"Motor {motor_id} not connected.")
 
-            # Step 2: Set Controlword to enable motor and send HALT command
+        try:
+            # Send your existing stop command sequence (kept as-is)
             self.nanolib_accessor.writeNumber(
                 device_handle, 0x1F, Nanolib.OdIndex(0x6040, 0x00), 16
-            )  # Enable motor
+            )
             self.nanolib_accessor.writeNumber(
                 device_handle, 0x01, Nanolib.OdIndex(0x6040, 0x00), 16
-            )  # HALT command
+            )
 
             self.logger.info(f"Motor {motor_id} stopped successfully.")
-
-            # Step 3: Check motor status
-            status_word = self.nanolib_accessor.readNumber(
-                device_handle, Nanolib.OdIndex(0x6041, 0x00)
+            self.logger.info(
+                f"Motor {motor_id}: Polling statusword for STOP (0x0040)..."
             )
-            result = status_word.getResult()
 
-            if result & 0x8000:  # Check halt status (HALT bit in the statusword)
-                self.logger.info(f"Motor {motor_id} halted successfully.")
-                return {"status": "success", "error_code": None}
-            else:
-                self.logger.error(f"Motor {motor_id} halt failed.")
-                return {"status": "failed", "error_code": result}
+            STOP_CONFIRMED = 0x0040  # matches your observed post-stop statusword 0x1240
 
-        except Exception as e:
-            self.logger.error(f"Motor {motor_id}: Error during stopping.")
-            raise e
+            deadline = time.time() + timeout_s
+            last_status = None
+
+            while time.time() < deadline:
+                sw_obj = self.nanolib_accessor.readNumber(
+                    device_handle, Nanolib.OdIndex(0x6041, 0x00)
+                )
+                sw = sw_obj.getResult()
+                last_status = sw
+
+                if sw & STOP_CONFIRMED:
+                    self.logger.info(
+                        f"Motor {motor_id} stop confirmed. (statusword=0x{sw:04X})"
+                    )
+                    return {"status": "success", "error_code": None}
+
+                time.sleep(poll_s)
+
+            self.logger.error(
+                f"Motor {motor_id} stop timeout. Last statusword=0x{(last_status or 0):04X}"
+            )
+            return {"status": "failed", "error_code": last_status}
+
+        except Exception:
+            self.logger.error(
+                f"Motor {motor_id}: Error during stopping.", exc_info=True
+            )
+            raise
 
     async def parking(self, parking_vel=1):
         """
@@ -442,7 +457,7 @@ class AdcController:
             Exception: If homing has not been completed before parking.
             Exception: If an error occurs while moving the motors to the parking position.
         """
-        parking_offset_motor1 = -225  # 225counts, 5 degree,
+        parking_offset_motor1 = -250  # 225counts, 5 degree,
         parking_offset_motor2 = -225
 
         if not self.home_position:

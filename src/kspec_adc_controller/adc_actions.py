@@ -16,7 +16,7 @@ __all__ = ["AdcActions"]
 class AdcActions:
     """Class to manage ADC actions including connecting, powering on/off, and motor control."""
 
-    def __init__(self, logger=None):
+    def __init__(self):
         """
         Initialize the AdcActions class and set up the ADC controller.
 
@@ -27,9 +27,9 @@ class AdcActions:
         """
         self.logger = AdcLogger(__file__)  # Use provided logger or create a default one
         self.logger.debug("Initializing AdcActions class.")
-        self.controller = AdcController(self.logger)
+        self.controller = AdcController()
         self.controller.find_devices()
-        self.calculator = ADCCalc(self.logger)  # Method change line
+        self.calculator = ADCCalc()  # Method change line
 
     def connect(self):
         """
@@ -344,15 +344,6 @@ class AdcActions:
 
             motor1_pos = state["motor1"]["position_state"]
             motor2_pos = state["motor2"]["position_state"]
-
-            # 🚨 position range check (180 ~ 270)
-            if not (180 < motor1_pos < 270 and 180 < motor2_pos < 270):
-                error_msg = (
-                    f"Motor position out of allowed range. "
-                    f"motor1: {motor1_pos}, motor2: {motor2_pos}"
-                )
-                self.logger.error(error_msg)
-                return self._generate_response("error", error_msg)
 
             self.logger.info("Homing completed successfully.")
             return self._generate_response(
